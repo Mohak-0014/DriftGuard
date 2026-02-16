@@ -1,0 +1,43 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_rebalance_precision.py::test_rebalance_preserves_total_value PASSED [100%]
+
+============================== warnings summary ===============================
+app\core\config.py:4
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\core\config.py:4: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\api\endpoints\auth.py:16
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\auth.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Lib\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+  * 'orm_mode' has been renamed to 'from_attributes'
+    warnings.warn(message, UserWarning)
+
+app\api\endpoints\portfolios.py:23
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:23: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class HoldingResponse(BaseModel):
+
+app\api\endpoints\portfolios.py:32
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:32: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class PortfolioResponse(BaseModel):
+
+app\schemas.py:12
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:12: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Portfolio(PortfolioBase):
+
+app\schemas.py:28
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RebalanceLogResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 1 passed, 8 warnings in 0.18s ========================

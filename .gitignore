@@ -1,0 +1,57 @@
+# General
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.tmp
+*.pyc
+nul
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+.env.*
+*.sqlite3
+*.db
+rebalance.db
+backend/rebalance.db
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+coverage/
+.npm/
+.yarn/
+
+# Project Specific Logs & Output
+verified_output.txt
+e2e_output.txt
+e2e_output_2.txt
+opt_output.txt
+db_debug.txt
+*.log
+api_response.json
+
+# Test & Utility Scripts
+verify_*.py
+test_*.py
+check_*.py
+clean_db.py
+create_tables.py
+seed_*.py
+debug_*.py
+kill_services.py
+trigger_*.py
+hello.py
+*.md
+!README.md
+!walkthrough.md
+!implementation_plan.md
+!task.md
+!docs/*.md

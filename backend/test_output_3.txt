@@ -1,0 +1,120 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_rebalance_precision.py::test_rebalance_preserves_total_value FAILED [100%]
+
+================================== FAILURES ===================================
+____________________ test_rebalance_preserves_total_value _____________________
+
+client = <starlette.testclient.TestClient object at 0x000001554C9FD940>
+db = <sqlalchemy.orm.session.Session object at 0x000001554C9FFE00>
+
+    def test_rebalance_preserves_total_value(client, db):
+        # 1. Setup Data
+        # Create User
+        user = User(email="test@example.com", hashed_password="hashedpassword")
+        db.add(user)
+        db.commit() # Commit to get ID
+    
+        # Create Portfolio
+        portfolio = Portfolio(user_id=user.id, name="Test Portfolio", currency="USD")
+        db.add(portfolio)
+        db.commit()
+    
+        # Dynamic override
+        def override_get_current_user():
+            return User(id=user.id, email=user.email, hashed_password=user.hashed_password)
+    
+        from app.main import app
+        app.dependency_overrides[deps.get_current_user] = override_get_current_user
+    
+        try:
+            # Create Holdings
+            # AAPL: 10 shares @ $150 = $1500
+            # GOOG: 5 shares @ $2800 = $14000
+            # Total = $15500
+            h1 = Holding(portfolio_id=portfolio.id, ticker="AAPL", quantity=10.0, avg_price=150.0, currency="USD")
+            h2 = Holding(portfolio_id=portfolio.id, ticker="GOOG", quantity=5.0, avg_price=2800.0, currency="USD")
+            db.add(h1)
+            db.add(h2)
+    
+            # Add Price History (Current Market Price)
+            # AAPL: $155.0
+            # GOOG: $2850.0
+            # Current Value = 10 * 155 + 5 * 2850 = 1550 + 14250 = 15800
+            p1 = PriceHistory(ticker="AAPL", close=155.0, date=datetime.now())
+            p2 = PriceHistory(ticker="GOOG", close=2850.0, date=datetime.now())
+            db.add(p1)
+            db.add(p2)
+            db.commit()
+    
+            # 2. Define Target Weights
+            # Let's say we want 50/50 split.
+            # Target Value per asset = 15800 / 2 = 7900
+            # Expected Quantities:
+            # AAPL: 7900 / 155 = 50.9677419...
+            # GOOG: 7900 / 2850 = 2.7719298...
+    
+            # Allow weight mismatch (sum != 1.0) to test normalization
+            target_weights = {
+                "AAPL": 0.45,
+                "GOOG": 0.45
+                # Sum = 0.9. Should differ from 1.0 to prove normalization works.
+            }
+    
+            # 3. Call API
+            response = client.post(
+                f"/api/rebalance/{portfolio.id}/apply",
+                json={"target_weights": target_weights}
+            )
+    
+>           assert response.status_code == 200
+E           assert 404 == 200
+E            +  where 404 = <Response [404 Not Found]>.status_code
+
+tests\test_rebalance_precision.py:68: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+ Creating tables...
+ Tables created: dict_keys(['users', 'portfolios', 'holdings', 'rebalance_logs', 'price_history', 'sentiment_scores'])
+-------------------------- Captured stdout teardown ---------------------------
+ Dropping tables...
+============================== warnings summary ===============================
+app\core\config.py:4
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\core\config.py:4: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\api\endpoints\auth.py:16
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\auth.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Lib\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+  * 'orm_mode' has been renamed to 'from_attributes'
+    warnings.warn(message, UserWarning)
+
+app\api\endpoints\portfolios.py:23
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:23: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class HoldingResponse(BaseModel):
+
+app\api\endpoints\portfolios.py:32
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:32: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class PortfolioResponse(BaseModel):
+
+app\schemas.py:12
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:12: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Portfolio(PortfolioBase):
+
+app\schemas.py:28
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RebalanceLogResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_rebalance_precision.py::test_rebalance_preserves_total_value
+======================== 1 failed, 8 warnings in 0.65s ========================

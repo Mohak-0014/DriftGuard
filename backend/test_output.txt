@@ -1,0 +1,102 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_rebalance_precision.py::test_rebalance_preserves_total_value FAILED [100%]
+
+================================== FAILURES ===================================
+____________________ test_rebalance_preserves_total_value _____________________
+
+client = <starlette.testclient.TestClient object at 0x0000019E72BBD940>
+db = <sqlalchemy.orm.session.Session object at 0x0000019E72BBFE00>
+
+    def test_rebalance_preserves_total_value(client, db):
+        # Override dependency
+        from app.main import app
+        app.dependency_overrides[deps.get_current_user] = override_get_current_user
+    
+        # 1. Setup Data
+        # Create User
+>       user = User(email="test@example.com", hashed_password="hashedpassword", is_active=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_rebalance_precision.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<string>:4: in __init__
+    ???
+venv\Lib\site-packages\sqlalchemy\orm\state.py:596: in _initialize_instance
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+venv\Lib\site-packages\sqlalchemy\orm\state.py:594: in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.models.user.User object at 0x0000019E72C142F0>
+kwargs = {'email': 'test@example.com', 'hashed_password': 'hashedpassword', 'is_active': True}
+cls_ = <class 'app.models.user.User'>, k = 'is_active'
+
+    def _declarative_constructor(self: Any, **kwargs: Any) -> None:
+        """A simple constructor that allows initialization from kwargs.
+    
+        Sets attributes on the constructed instance using the names and
+        values in ``kwargs``.
+    
+        Only keys that are present as
+        attributes of the instance's class are allowed. These could be,
+        for example, any mapped columns or relationships.
+        """
+        cls_ = type(self)
+        for k in kwargs:
+            if not hasattr(cls_, k):
+>               raise TypeError(
+                    "%r is an invalid keyword argument for %s" % (k, cls_.__name__)
+                )
+E               TypeError: 'is_active' is an invalid keyword argument for User
+
+venv\Lib\site-packages\sqlalchemy\orm\decl_base.py:2179: TypeError
+---------------------------- Captured stdout setup ----------------------------
+ Creating tables...
+ Tables created: dict_keys(['users', 'portfolios', 'holdings', 'rebalance_logs', 'price_history', 'sentiment_scores'])
+-------------------------- Captured stdout teardown ---------------------------
+ Dropping tables...
+============================== warnings summary ===============================
+app\core\config.py:4
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\core\config.py:4: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+app\api\endpoints\auth.py:16
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\auth.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+venv\Lib\site-packages\pydantic\_internal\_config.py:383
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\venv\Lib\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+  * 'orm_mode' has been renamed to 'from_attributes'
+    warnings.warn(message, UserWarning)
+
+app\api\endpoints\portfolios.py:23
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:23: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class HoldingResponse(BaseModel):
+
+app\api\endpoints\portfolios.py:32
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\api\endpoints\portfolios.py:32: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class PortfolioResponse(BaseModel):
+
+app\schemas.py:12
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:12: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Portfolio(PortfolioBase):
+
+app\schemas.py:28
+  C:\Users\PC\OneDrive\Desktop\Portfolio Rebalancing\backend\app\schemas.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class RebalanceLogResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_rebalance_precision.py::test_rebalance_preserves_total_value
+======================== 1 failed, 8 warnings in 0.69s ========================
