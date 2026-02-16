@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "d6896c1r01qi2if78q3gd6896c1r01qi2if78q40")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
+    # Email
+    SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "")
+
     class Config:
         case_sensitive = True
         env_file = ".env"

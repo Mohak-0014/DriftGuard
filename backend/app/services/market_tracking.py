@@ -147,3 +147,18 @@ class MarketTrackingService:
         # Update cooldown timestamp
         portfolio.last_notification_sent_at = datetime.now()
         print(f"  -> Notification sent for Portfolio {portfolio.id}: {title}")
+
+        # Send Email
+        try:
+            from app.models.user import User
+            user = self.db.query(User).filter(User.id == portfolio.user_id).first()
+            if user and user.email:
+                from app.services.email import EmailService
+                email_service = EmailService()
+                email_service.send_email(
+                    to_email=user.email,
+                    subject=f"Portfolio Alert: {title}",
+                    body=f"Hello,\n\n{message}\n\n- Portfolio Rebalancing System"
+                )
+        except Exception as e:
+            print(f"Failed to send email notif: {e}")
