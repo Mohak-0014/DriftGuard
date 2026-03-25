@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, signup } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 const Login: React.FC = () => {
     const [isLogin, setIsLogin] = useState(true);
@@ -8,6 +8,7 @@ const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
+    const { login, signup } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -18,9 +19,9 @@ const Login: React.FC = () => {
                 navigate('/');
             } else {
                 await signup(email, password);
-                // After signup, automatically login or ask user to login
+                // After signup, automatically login
                 await login(email, password);
-                navigate('/onboarding'); // Redirect to onboarding after signup
+                navigate('/onboarding');
             }
         } catch (err: any) {
             const message = err.response?.data?.detail || 'Authentication failed';

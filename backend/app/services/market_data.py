@@ -1,6 +1,8 @@
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta, date
+from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.market_data import PriceHistory
 from sqlalchemy import func
@@ -42,6 +44,38 @@ class MarketDataService:
                 return False
                 
         return True
+
+    def search_ticker(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Search for tickers using Yahoo Finance Autocomplete API.
+        """
+        import requests
+        try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                results = []
+                if 'quotes' in data:
+                    for quote in data['quotes']:
+                        # Filter for equities/ETFs to keep it relevant
+                        if quote.get('quoteType') in ['EQUITY', 'ETF', 'MUTUALFUND']:
+                            results.append({
+                                "symbol": quote.get('symbol'),
+                                "shortname": quote.get('shortname'),
+                                "longname": quote.get('longname'),
+                                "exchange": quote.get('exchange'),
+                                "type": quote.get('quoteType')
+                            })
+                return results
+            else:
+                print(f"Yahoo Search failed: {response.status_code}")
+                return []
+        except Exception as e:
+            print(f"Error searching ticker: {e}")
+            return []
 
     def fetch_and_store_prices(self, tickers: list[str]):
         """

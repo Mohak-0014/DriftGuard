@@ -139,6 +139,51 @@ def add_holding(
 
     return portfolio_to_response(portfolio)
 
+@router.put("/{id}/holdings/{ticker}", response_model=PortfolioResponse)
+def update_holding(
+    id: int,
+    ticker: str,
+    holding_in: HoldingCreate, # Reuse create schema, ignore ticker field in body if it differs
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    holding = db.query(Holding).filter(Holding.portfolio_id == id, Holding.ticker == ticker).first()
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    
+    # Update fields
+    holding.quantity = holding_in.quantity
+    holding.avg_price = holding_in.avg_price
+    holding.currency = holding_in.currency
+    
+    db.commit()
+    db.refresh(portfolio)
+    return portfolio_to_response(portfolio)
+
+@router.delete("/{id}/holdings/{ticker}", response_model=PortfolioResponse)
+def delete_holding(
+    id: int,
+    ticker: str,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    holding = db.query(Holding).filter(Holding.portfolio_id == id, Holding.ticker == ticker).first()
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    
+    db.delete(holding)
+    db.commit()
+    db.refresh(portfolio)
+    return portfolio_to_response(portfolio)
+
 from app.services.risk import RiskEngine
 from app.schemas import PortfolioAnalytics
 

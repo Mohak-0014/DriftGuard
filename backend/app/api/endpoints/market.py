@@ -10,6 +10,20 @@ router = APIRouter()
 class TickerList(BaseModel):
     tickers: List[str]
 
+
+@router.get("/search")
+def search_tickers(
+    q: str,
+    db: Session = Depends(deps.get_db),
+) -> Any:
+    """
+    Search for tickers.
+    """
+    if not q:
+        return []
+    service = MarketDataService(db)
+    return service.search_ticker(q)
+
 @router.post("/update")
 def update_prices(
     ticker_list: TickerList,

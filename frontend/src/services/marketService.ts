@@ -18,8 +18,8 @@ export interface SentimentData {
     source: string;
 }
 
-export const getSentiment = async (ticker: string) => {
-    const response = await api.get<SentimentData>(`/market/sentiment/${ticker}`);
+export const getSentiment = async (ticker: string): Promise<SentimentData> => {
+    const response = await api.get(`/market/sentiment/${ticker}`);
     return response.data;
 };
 
@@ -28,7 +28,12 @@ export interface VolatilityPoint {
     value: number;
 }
 
-export const getVolatilityHistory = async (ticker: string, days: number = 90) => {
-    const response = await api.get<VolatilityPoint[]>(`/market/volatility/${ticker}?days=${days}`);
+export const getVolatilityHistory = async (ticker: string) => {
+    const response = await api.get(`/market/volatility/${ticker}`);
+    return response.data;
+};
+
+export const searchTickers = async (query: string) => {
+    const response = await api.get(`/market/search?q=${query}`);
     return response.data;
 };

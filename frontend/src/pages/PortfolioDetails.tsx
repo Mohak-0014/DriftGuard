@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPortfolio, optimizePortfolio, addHolding, applyRebalance, getOptimizationResult, CURRENCY_SYMBOLS } from '../services/portfolioService';
+import { getPortfolio, optimizePortfolio, addHolding, applyRebalance, getOptimizationResult, CURRENCY_SYMBOLS, updateHolding, deleteHolding } from '../services/portfolioService';
 import type { Portfolio } from '../services/portfolioService';
 import { getLatestPrices, updatePrices, getSentiment } from '../services/marketService';
 import type { SentimentData } from '../services/marketService';
@@ -9,6 +9,8 @@ import AllocationChart from '../components/AllocationChart';
 import DriftAlert from '../components/DriftAlert';
 import PortfolioHistoryChart from '../components/PortfolioHistoryChart';
 import AnalyticsTab from '../components/AnalyticsTab';
+import TickerSearch from '../components/TickerSearch';
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'; // Assuming you have heroicons or use text
 
 const PortfolioDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -19,8 +21,9 @@ const PortfolioDetails: React.FC = () => {
     const [logging, setLogging] = useState(false); // State for logging action
     const [prices, setPrices] = useState<Record<string, number>>({});
     const [sentimentData, setSentimentData] = useState<Record<string, SentimentData>>({});
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [newHolding, setNewHolding] = useState({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' });
+    const [showModal, setShowModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [holdingForm, setHoldingForm] = useState({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' });
     const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
 
     useEffect(() => {
@@ -62,14 +65,10 @@ const PortfolioDetails: React.FC = () => {
             setPortfolio(data);
             if (data && data.holdings.length > 0) {
                 const tickers = data.holdings.map(h => h.ticker);
-
-                // Fetch Prices
                 updatePrices(tickers).then(() => {
                     fetchPrices(tickers);
                 }).catch(err => console.error("Update failed", err));
                 fetchPrices(tickers);
-
-                // Fetch Sentiment
                 fetchSentiment(tickers);
             }
         } catch (error) {
@@ -99,17 +98,48 @@ const PortfolioDetails: React.FC = () => {
         }
     };
 
-    const handleAddHolding = async (e: React.FormEvent) => {
+    const handleOpenAdd = () => {
+        setIsEditing(false);
+        setHoldingForm({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' });
+        setShowModal(true);
+    };
+
+    const handleOpenEdit = (holding: any) => {
+        setIsEditing(true);
+        setHoldingForm({
+            ticker: holding.ticker,
+            quantity: holding.quantity,
+            avg_price: holding.avg_price,
+            currency: holding.currency
+        });
+        setShowModal(true);
+    };
+
+    const handleDelete = async (ticker: string) => {
+        if (!id || !confirm(`Are you sure you want to remove ${ticker}?`)) return;
+        try {
+            await deleteHolding(parseInt(id), ticker);
+            loadPortfolio(parseInt(id));
+        } catch (error) {
+            console.error("Failed to delete holding", error);
+            alert("Failed to delete holding.");
+        }
+    };
+
+    const handleSubmitHolding = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
         try {
-            await addHolding(parseInt(id), newHolding);
-            setShowAddModal(false);
-            setNewHolding({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' });
-            loadPortfolio(parseInt(id)); // Reload to get updated list
+            if (isEditing) {
+                await updateHolding(parseInt(id), holdingForm.ticker, holdingForm);
+            } else {
+                await addHolding(parseInt(id), holdingForm);
+            }
+            setShowModal(false);
+            loadPortfolio(parseInt(id));
         } catch (error) {
-            console.error("Failed to add holding", error);
-            alert("Failed to add holding.");
+            console.error("Failed to save holding", error);
+            alert("Failed to save holding.");
         }
     };
 
@@ -119,7 +149,7 @@ const PortfolioDetails: React.FC = () => {
         try {
             const result = await optimizePortfolio(parseInt(id));
             setOptimizationResult(result);
-            setExplanation(null); // Clear previous explanation
+            setExplanation(null);
         } catch (error) {
             console.error("Optimization failed", error);
             alert("Optimization failed. Ensure market data is available.");
@@ -128,7 +158,6 @@ const PortfolioDetails: React.FC = () => {
         }
     };
 
-    // Calculate current weights helper - uses USD-normalized values
     const calculateCurrentWeights = () => {
         if (!portfolio) return {};
         const totalValueUsd = portfolio.total_value_usd || portfolio.holdings.reduce(
@@ -148,11 +177,9 @@ const PortfolioDetails: React.FC = () => {
         if (!id || !optimizationResult || !portfolio) return;
         setLogging(true);
         try {
-            // Call apply endpoint to update holdings
             await applyRebalance(parseInt(id), optimizationResult.optimized_weights);
             alert("Portfolio rebalanced successfully! Holdings have been updated.");
-            setOptimizationResult(null); // Clear result after accepting
-            // Reload portfolio to show updated holdings
+            setOptimizationResult(null);
             loadPortfolio(parseInt(id));
         } catch (error) {
             console.error("Failed to apply rebalance", error);
@@ -168,10 +195,9 @@ const PortfolioDetails: React.FC = () => {
         </div>
     );
 
-    // Calculate current weights for DriftAlert
     const currentWeights = calculateCurrentWeights();
+    const displayTotalValue = portfolio.total_value_usd || 0;
 
-    // Check if optimal
     const isOptimal = optimizationResult && (() => {
         const targetWeights = optimizationResult.optimized_weights;
         const tickers = new Set([...Object.keys(currentWeights), ...Object.keys(targetWeights)]);
@@ -181,11 +207,8 @@ const PortfolioDetails: React.FC = () => {
             const target = targetWeights[ticker] || 0;
             maxDeviation = Math.max(maxDeviation, Math.abs(current - target));
         });
-        return maxDeviation < 0.01; // Less than 1% deviation
+        return maxDeviation < 0.01;
     })();
-
-    // Calculate total value for display (sum of USD values)
-    const displayTotalValue = portfolio.total_value_usd || 0;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -256,7 +279,7 @@ const PortfolioDetails: React.FC = () => {
                                 <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                                     <h3 className="text-lg font-semibold text-slate-900">Holdings</h3>
                                     <button
-                                        onClick={() => setShowAddModal(true)}
+                                        onClick={handleOpenAdd}
                                         className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"
                                     >
                                         + Add Stock
@@ -271,7 +294,8 @@ const PortfolioDetails: React.FC = () => {
                                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Qty</th>
                                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Avg Price</th>
                                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Cur Price</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Current Value</th>
+                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Value</th>
+                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-slate-200">
@@ -299,6 +323,24 @@ const PortfolioDetails: React.FC = () => {
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 text-right">
                                                             {currentValue > 0 ? `${holdingSymbol}${currentValue.toFixed(2)}` : '-'}
+                                                        </td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                                            <div className="flex justify-end space-x-2">
+                                                                <button
+                                                                    onClick={() => handleOpenEdit(holding)}
+                                                                    className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50 transition-colors"
+                                                                    title="Edit"
+                                                                >
+                                                                    <PencilIcon className="h-5 w-5" aria-hidden="true" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDelete(holding.ticker)}
+                                                                    className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                                                    title="Delete"
+                                                                >
+                                                                    <TrashIcon className="h-5 w-5" aria-hidden="true" />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 );
@@ -439,23 +481,34 @@ const PortfolioDetails: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Add Stock Modal */}
-                    {showAddModal && (
+                    {/* Add/Edit Stock Modal */}
+                    {showModal && (
                         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                             <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full animate-in zoom-in-95 duration-200">
-                                <h3 className="text-lg font-semibold text-slate-900 mb-4">Add New Holding</h3>
-                                <form onSubmit={handleAddHolding} className="space-y-4">
+                                <h3 className="text-lg font-semibold text-slate-900 mb-4">{isEditing ? 'Edit Holding' : 'Add New Holding'}</h3>
+                                <form onSubmit={handleSubmitHolding} className="space-y-4">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700">Ticker Symbol</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                            placeholder="e.g. AAPL"
-                                            value={newHolding.ticker}
-                                            onChange={(e) => setNewHolding({ ...newHolding, ticker: e.target.value.toUpperCase() })}
-                                        />
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                disabled
+                                                className="mt-1 block w-full border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm"
+                                                value={holdingForm.ticker}
+                                            />
+                                        ) : (
+                                            <TickerSearch
+                                                onSelect={(ticker) => setHoldingForm({ ...holdingForm, ticker })}
+                                                placeholder="Search e.g. AAPL"
+                                                className="mt-1"
+                                            />
+                                        )}
                                     </div>
+                                    {/* Hidden input to ensure state is bound if TickerSearch doesn't fully drive it or for fallback */}
+                                    {!isEditing && holdingForm.ticker && (
+                                        <p className="text-xs text-indigo-600">Selected: {holdingForm.ticker}</p>
+                                    )}
+
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700">Quantity</label>
@@ -464,8 +517,8 @@ const PortfolioDetails: React.FC = () => {
                                                 required
                                                 step="any"
                                                 className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                                value={newHolding.quantity}
-                                                onChange={(e) => setNewHolding({ ...newHolding, quantity: parseFloat(e.target.value) })}
+                                                value={holdingForm.quantity}
+                                                onChange={(e) => setHoldingForm({ ...holdingForm, quantity: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div>
@@ -475,8 +528,8 @@ const PortfolioDetails: React.FC = () => {
                                                 step="any"
                                                 required
                                                 className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                                value={newHolding.avg_price}
-                                                onChange={(e) => setNewHolding({ ...newHolding, avg_price: parseFloat(e.target.value) })}
+                                                value={holdingForm.avg_price}
+                                                onChange={(e) => setHoldingForm({ ...holdingForm, avg_price: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                     </div>
@@ -484,8 +537,8 @@ const PortfolioDetails: React.FC = () => {
                                         <label className="block text-sm font-medium text-slate-700">Currency</label>
                                         <select
                                             className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                            value={newHolding.currency}
-                                            onChange={(e) => setNewHolding({ ...newHolding, currency: e.target.value })}
+                                            value={holdingForm.currency}
+                                            onChange={(e) => setHoldingForm({ ...holdingForm, currency: e.target.value })}
                                         >
                                             <option value="USD">$ USD - US Dollar</option>
                                             <option value="EUR">€ EUR - Euro</option>
@@ -495,7 +548,7 @@ const PortfolioDetails: React.FC = () => {
                                     <div className="flex justify-end space-x-3 mt-6 pt-2">
                                         <button
                                             type="button"
-                                            onClick={() => setShowAddModal(false)}
+                                            onClick={() => setShowModal(false)}
                                             className="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                                         >
                                             Cancel
@@ -504,7 +557,7 @@ const PortfolioDetails: React.FC = () => {
                                             type="submit"
                                             className="bg-indigo-600 border border-transparent rounded-md shadow-sm py-2 px-4 inline-flex justify-center text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
                                         >
-                                            Add Holding
+                                            {isEditing ? 'Save Changes' : 'Add Holding'}
                                         </button>
                                     </div>
                                 </form>

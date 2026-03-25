@@ -60,8 +60,18 @@ export const logRebalance = async (data: { portfolio_id: number, old_weights: Re
     return response.data;
 };
 
-export const addHolding = async (portfolioId: number, holding: Omit<Holding, 'ticker' | 'quantity' | 'avg_price'> & { ticker: string, quantity: number, avg_price: number }) => {
-    const response = await api.post<Portfolio>(`/portfolios/${portfolioId}/holdings`, holding);
+export const addHolding = async (portfolioId: number, holding: any) => {
+    const response = await api.post(`/portfolios/${portfolioId}/holdings`, holding);
+    return response.data;
+};
+
+export const updateHolding = async (portfolioId: number, ticker: string, holding: any) => {
+    const response = await api.put(`/portfolios/${portfolioId}/holdings/${ticker}`, holding);
+    return response.data;
+};
+
+export const deleteHolding = async (portfolioId: number, ticker: string) => {
+    const response = await api.delete(`/portfolios/${portfolioId}/holdings/${ticker}`);
     return response.data;
 };
 
