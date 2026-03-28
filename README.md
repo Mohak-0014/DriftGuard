@@ -53,6 +53,6 @@ A decision-support platform for portfolio management and rebalancing.
    App will be available at `http://localhost:5173`.
 
 ## Features
-- **Dashboard**: View all portfolios.
+- **Dashboard**: View all portfolios
 - **Portfolio Details**: See holdings and current value.
 - **Optimization**: Click "Run Optimization" to get rebalancing suggestions based on Mean-Variance Optimization.
