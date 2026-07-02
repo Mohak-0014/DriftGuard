@@ -55,6 +55,8 @@ def start_scheduler():
 @app.on_event("shutdown")
 def shutdown_scheduler():
     scheduler.shutdown()
+    from app.messaging.producer import kafka_producer
+    kafka_producer.close()
 
 @app.get("/")
 def read_root():

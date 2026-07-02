@@ -86,6 +86,7 @@ class MarketDataService:
                         self._process_single_ticker(ticker, data[ticker])
 
             self.db.commit()
+            self._publish_price_event(tickers, "yfinance")
             return {"status": "success", "message": f"Updated prices for {len(tickers)} tickers (yfinance)"}
 
         except Exception as exc:
@@ -109,6 +110,7 @@ class MarketDataService:
 
             if success_count > 0:
                 self.db.commit()
+                self._publish_price_event(tickers, "alphavantage")
                 return {"status": "success", "message": f"Updated {success_count} tickers (AlphaVantage). Errors: {errors}"}
             self.db.rollback()
             return {"status": "error", "message": f"All sources failed. yfinance: {exc}. AV: {errors}"}
@@ -208,8 +210,19 @@ class MarketDataService:
                 ))
 
     def get_latest_prices(self, tickers: list[str]) -> Dict[str, float]:
-        prices = {}
+        from app.services.cache import cache
+
+        prices: Dict[str, float] = {}
+        uncached: list[str] = []
+
         for ticker in tickers:
+            cached_price = cache.get_price(ticker)
+            if cached_price is not None:
+                prices[ticker] = cached_price
+            else:
+                uncached.append(ticker)
+
+        for ticker in uncached:
             latest = (
                 self.db.query(PriceHistory)
                 .filter(PriceHistory.ticker == ticker, PriceHistory.close.isnot(None))
@@ -218,7 +231,17 @@ class MarketDataService:
             )
             if latest:
                 prices[ticker] = latest.close
+                cache.set_price(ticker, latest.close)
+
         return prices
+
+    def _publish_price_event(self, tickers: list[str], source: str) -> None:
+        try:
+            from app.messaging.producer import kafka_producer
+            from app.messaging.events import TOPIC_PRICE_FETCHED, PriceFetchedEvent
+            kafka_producer.publish(TOPIC_PRICE_FETCHED, PriceFetchedEvent(tickers=tickers, source=source))
+        except Exception as exc:
+            logger.debug("Could not publish price event: %s", exc)
 
     def get_volatility_history(self, ticker: str, days: int = 90, window: int = 30) -> list[dict]:
         import numpy as np

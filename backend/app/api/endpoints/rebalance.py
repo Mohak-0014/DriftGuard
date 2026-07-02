@@ -125,9 +125,16 @@ def optimize_portfolio(
     db.commit()
     db.refresh(opt_result)
     
-    # Trigger LLM Explanation in Background
-    llm_service = LLMExplanationService(db)
-    background_tasks.add_task(llm_service.generate_explanation, opt_result.id)
+    # Trigger LLM explanation — prefer Kafka worker, fall back to BackgroundTasks
+    from app.messaging.producer import kafka_producer
+    from app.messaging.events import TOPIC_OPTIMIZATION_REQUEST, OptimizationRequestEvent
+    published = kafka_producer.publish(
+        TOPIC_OPTIMIZATION_REQUEST,
+        OptimizationRequestEvent(optimization_id=opt_result.id, portfolio_id=portfolio_id),
+    )
+    if not published:
+        llm_service = LLMExplanationService(db)
+        background_tasks.add_task(llm_service.generate_explanation, opt_result.id)
 
     return {
         "portfolio_id": portfolio_id,

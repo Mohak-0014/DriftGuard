@@ -43,11 +43,18 @@ class CurrencyService:
         Returns rates relative to USD.
         """
         global _cached_rates, _cache_expiry
-        
-        # Check cache
+
+        from app.services.cache import cache as redis_cache
+
+        # 1. Redis cache (TTL=6h)
+        redis_rates = redis_cache.get_rates()
+        if redis_rates is not None:
+            return redis_rates
+
+        # 2. In-process memory fallback
         if _cache_expiry and datetime.now() < _cache_expiry and _cached_rates:
             return _cached_rates
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.API_URL, timeout=5.0)
@@ -60,6 +67,7 @@ class CurrencyService:
                         "INR": rates.get("INR", FALLBACK_RATES["INR"])
                     }
                     _cache_expiry = datetime.now() + self.CACHE_DURATION
+                    redis_cache.set_rates(_cached_rates)
                     return _cached_rates
         except Exception as exc:
             logger.warning("Failed to fetch exchange rates: %s", exc)
@@ -68,14 +76,21 @@ class CurrencyService:
 
     def get_exchange_rates_sync(self) -> Dict[str, float]:
         """
-        Synchronous version - uses cached rates or fallback.
+        Synchronous version — checks Redis, then in-process memory, then live API.
         """
         global _cached_rates, _cache_expiry
-        
+
+        from app.services.cache import cache as redis_cache
+
+        # 1. Redis cache
+        redis_rates = redis_cache.get_rates()
+        if redis_rates is not None:
+            return redis_rates
+
+        # 2. In-process memory
         if _cache_expiry and datetime.now() < _cache_expiry and _cached_rates:
             return _cached_rates
-        
-        # Try synchronous fetch
+
         try:
             response = httpx.get(self.API_URL, timeout=5.0)
             if response.status_code == 200:
@@ -87,10 +102,11 @@ class CurrencyService:
                     "INR": rates.get("INR", FALLBACK_RATES["INR"])
                 }
                 _cache_expiry = datetime.now() + self.CACHE_DURATION
+                redis_cache.set_rates(_cached_rates)
                 return _cached_rates
         except Exception as exc:
             logger.warning("Failed to fetch exchange rates (sync): %s", exc)
-        
+
         return FALLBACK_RATES
     
     def convert(self, amount: float, from_currency: str, to_currency: str) -> float:

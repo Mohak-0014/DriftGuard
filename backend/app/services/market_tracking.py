@@ -125,11 +125,23 @@ class MarketTrackingService:
             from app.models.user import User
             user = self.db.query(User).filter(User.id == portfolio.user_id).first()
             if user and user.email:
-                from app.services.email import EmailService
-                EmailService().send_email(
-                    to_email=user.email,
-                    subject=f"Portfolio Alert: {title}",
-                    body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                from app.messaging.producer import kafka_producer
+                from app.messaging.events import TOPIC_EMAIL_SEND, EmailSendEvent
+                published = kafka_producer.publish(
+                    TOPIC_EMAIL_SEND,
+                    EmailSendEvent(
+                        to_email=user.email,
+                        subject=f"Portfolio Alert: {title}",
+                        body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                    ),
                 )
+                if not published:
+                    # Kafka unavailable — deliver synchronously
+                    from app.services.email import EmailService
+                    EmailService().send_email(
+                        to_email=user.email,
+                        subject=f"Portfolio Alert: {title}",
+                        body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                    )
         except Exception as exc:
             logger.error("Failed to send email notification: %s", exc)

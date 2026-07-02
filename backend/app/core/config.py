@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
+    # Redis — leave blank to run without cache
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
+    # Kafka — leave blank to run without message bus
+    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")
+
     # Email
     SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
