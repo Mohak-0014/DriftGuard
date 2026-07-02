@@ -9,11 +9,14 @@ DriftGuard is a full-stack web application that monitors investment portfolios f
 ### Login
 ![Login](docs/screenshots/01_login.png)
 
-### Create Portfolio
-![Create Portfolio](docs/screenshots/04_create_portfolio.png)
+### Sign Up
+![Sign Up](docs/screenshots/02_signup.png)
 
 ### Dashboard
 ![Dashboard](docs/screenshots/05_dashboard.png)
+
+### Create Portfolio
+![Create Portfolio](docs/screenshots/04_new_portfolio.png)
 
 ### Portfolio Overview — Value History, Allocation & Drift Alerts
 ![Portfolio Overview](docs/screenshots/08_optimization_result.png)
