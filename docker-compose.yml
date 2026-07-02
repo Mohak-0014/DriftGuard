@@ -18,6 +18,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # Read replica — streams WAL from the primary.
+  # In development both primary and replica point to the same instance;
+  # set DATABASE_READ_URL in the backend environment to route reads here.
+  db-replica:
+    image: postgres:15
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=portfolio_db
+      # In production replace with a real streaming replica setup
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    ports:
+      - "5433:5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     ports:
@@ -68,8 +92,41 @@ services:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma
 
+  # Celery worker — processes LLM explanation tasks
+  celery-worker:
+    build: ./backend
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/portfolio_db
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  # Celery beat — fires the periodic market-check task every 4 hours
+  celery-beat:
+    build: ./backend
+    command: celery -A app.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/portfolio_db
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - celery_beat_data:/app/celerybeat-schedule
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  postgres_replica_data:
   redis_data:
   kafka_data:
   chroma_data:
+  celery_beat_data:

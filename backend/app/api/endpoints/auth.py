@@ -1,11 +1,12 @@
 import logging
 import re
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.core import security
+from app.core.limiter import limiter
 from app.models.user import User
 from pydantic import BaseModel, field_validator
 
@@ -41,7 +42,8 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(user_in: UserCreate, db: Session = Depends(deps.get_db)) -> Any:
+@limiter.limit("10/minute")
+def create_user(request: Request, user_in: UserCreate, db: Session = Depends(deps.get_db)) -> Any:
     existing = db.query(User).filter(User.email == user_in.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="A user with this email already exists.")
@@ -56,7 +58,8 @@ def create_user(user_in: UserCreate, db: Session = Depends(deps.get_db)) -> Any:
     return user
 
 @router.post("/token")
-def login_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(deps.get_db)) -> Any:
+@limiter.limit("20/minute")
+def login_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(deps.get_db)) -> Any:
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect email or password")

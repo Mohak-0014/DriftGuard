@@ -1,8 +1,9 @@
 import logging
 from typing import Any, List, Dict
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from app.api import deps
+from app.core.limiter import limiter
 from app.models.user import User
 from app.models.portfolio import Portfolio
 from app.services.optimization import OptimizationEngine
@@ -23,10 +24,12 @@ class OptimizationConfig(BaseModel):
     div_penalty: float = 0.0
 
 @router.post("/{portfolio_id}/optimize")
+@limiter.limit("10/minute")
 def optimize_portfolio(
+    request: Request,
     portfolio_id: int,
     background_tasks: BackgroundTasks,
-    config: OptimizationConfig = OptimizationConfig(), # Default config if not provided
+    config: OptimizationConfig = OptimizationConfig(),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
@@ -125,16 +128,21 @@ def optimize_portfolio(
     db.commit()
     db.refresh(opt_result)
     
-    # Trigger LLM explanation — prefer Kafka worker, fall back to BackgroundTasks
-    from app.messaging.producer import kafka_producer
-    from app.messaging.events import TOPIC_OPTIMIZATION_REQUEST, OptimizationRequestEvent
-    published = kafka_producer.publish(
-        TOPIC_OPTIMIZATION_REQUEST,
-        OptimizationRequestEvent(optimization_id=opt_result.id, portfolio_id=portfolio_id),
-    )
-    if not published:
-        llm_service = LLMExplanationService(db)
-        background_tasks.add_task(llm_service.generate_explanation, opt_result.id)
+    # Trigger LLM explanation: Celery → Kafka → BackgroundTasks (degradation chain)
+    from app.celery_app import celery_available
+    if celery_available():
+        from app.tasks.llm_tasks import generate_explanation as celery_generate
+        celery_generate.delay(opt_result.id)
+    else:
+        from app.messaging.producer import kafka_producer
+        from app.messaging.events import TOPIC_OPTIMIZATION_REQUEST, OptimizationRequestEvent
+        published = kafka_producer.publish(
+            TOPIC_OPTIMIZATION_REQUEST,
+            OptimizationRequestEvent(optimization_id=opt_result.id, portfolio_id=portfolio_id),
+        )
+        if not published:
+            llm_service = LLMExplanationService(db)
+            background_tasks.add_task(llm_service.generate_explanation, opt_result.id)
 
     return {
         "portfolio_id": portfolio_id,

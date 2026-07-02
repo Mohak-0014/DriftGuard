@@ -118,8 +118,35 @@ class MarketTrackingService:
             is_read=0,
         )
         self.db.add(notification)
+        self.db.flush()  # populate notification.id and created_at before push
         portfolio.last_notification_sent_at = datetime.now()
         logger.info("Notification for portfolio %s: %s", portfolio.id, title)
+
+        # Push to any open WebSocket connections for this user (fire-and-forget)
+        try:
+            import asyncio
+            from app.ws.manager import ws_manager
+            payload = {
+                "type": "notification",
+                "data": {
+                    "id": notification.id,
+                    "portfolio_id": portfolio.id,
+                    "title": title,
+                    "message": message,
+                    "notification_type": type,
+                },
+            }
+            # Run coroutine in the current event loop if one exists, else skip
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(ws_manager.send(portfolio.user_id, payload))
+                else:
+                    loop.run_until_complete(ws_manager.send(portfolio.user_id, payload))
+            except RuntimeError:
+                pass  # no event loop in Celery worker — skip WS push
+        except Exception as exc:
+            logger.debug("WS push skipped: %s", exc)
 
         try:
             from app.models.user import User

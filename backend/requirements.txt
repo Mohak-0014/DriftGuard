@@ -24,3 +24,6 @@ openai
 requests
 redis
 kafka-python-ng
+celery[redis]
+slowapi
+websockets

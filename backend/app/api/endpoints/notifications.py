@@ -2,6 +2,7 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.api import deps
+from app.api.deps import get_read_db, get_current_user
 from app.models.notification import Notification
 from app.models.user import User
 from pydantic import BaseModel
@@ -23,7 +24,7 @@ class NotificationResponse(BaseModel):
 
 @router.get("/", response_model=List[NotificationResponse])
 def get_notifications(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_read_db),
     current_user: User = Depends(deps.get_current_user),
     limit: int = 20
 ) -> Any:
