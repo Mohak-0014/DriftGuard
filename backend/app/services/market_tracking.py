@@ -118,18 +118,57 @@ class MarketTrackingService:
             is_read=0,
         )
         self.db.add(notification)
+        self.db.flush()  # populate notification.id and created_at before push
         portfolio.last_notification_sent_at = datetime.now()
         logger.info("Notification for portfolio %s: %s", portfolio.id, title)
+
+        # Push to any open WebSocket connections for this user (fire-and-forget)
+        try:
+            import asyncio
+            from app.ws.manager import ws_manager
+            payload = {
+                "type": "notification",
+                "data": {
+                    "id": notification.id,
+                    "portfolio_id": portfolio.id,
+                    "title": title,
+                    "message": message,
+                    "notification_type": type,
+                },
+            }
+            # Run coroutine in the current event loop if one exists, else skip
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(ws_manager.send(portfolio.user_id, payload))
+                else:
+                    loop.run_until_complete(ws_manager.send(portfolio.user_id, payload))
+            except RuntimeError:
+                pass  # no event loop in Celery worker — skip WS push
+        except Exception as exc:
+            logger.debug("WS push skipped: %s", exc)
 
         try:
             from app.models.user import User
             user = self.db.query(User).filter(User.id == portfolio.user_id).first()
             if user and user.email:
-                from app.services.email import EmailService
-                EmailService().send_email(
-                    to_email=user.email,
-                    subject=f"Portfolio Alert: {title}",
-                    body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                from app.messaging.producer import kafka_producer
+                from app.messaging.events import TOPIC_EMAIL_SEND, EmailSendEvent
+                published = kafka_producer.publish(
+                    TOPIC_EMAIL_SEND,
+                    EmailSendEvent(
+                        to_email=user.email,
+                        subject=f"Portfolio Alert: {title}",
+                        body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                    ),
                 )
+                if not published:
+                    # Kafka unavailable — deliver synchronously
+                    from app.services.email import EmailService
+                    EmailService().send_email(
+                        to_email=user.email,
+                        subject=f"Portfolio Alert: {title}",
+                        body=f"Hello,\n\n{message}\n\n— DriftGuard",
+                    )
         except Exception as exc:
             logger.error("Failed to send email notification: %s", exc)

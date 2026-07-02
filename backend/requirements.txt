@@ -17,9 +17,13 @@ textblob
 httpx
 pytest
 pytest-asyncio
-httpx
 greenlet
 alembic
 apscheduler
 openai
 requests
+redis
+kafka-python-ng
+celery[redis]
+slowapi
+websockets

@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
+    # Redis — leave blank to run without cache / Celery broker
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
+    # Kafka — leave blank to run without message bus
+    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")
+
+    # Read replica — leave blank to use the primary for reads
+    DATABASE_READ_URL: str = os.getenv("DATABASE_READ_URL", "")
+
     # Email
     SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))

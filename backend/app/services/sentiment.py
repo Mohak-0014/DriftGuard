@@ -11,22 +11,33 @@ class SentimentService:
         self.db = db
 
     def get_sentiment(self, ticker: str) -> dict:
+        from app.services.cache import cache
+
+        # 1. Check Redis cache (TTL=12h, avoids DB + Finnhub round-trip)
+        cached_redis = cache.get_sentiment(ticker)
+        if cached_redis is not None:
+            return cached_redis
+
+        # 2. Check DB for a recent entry (< 12h old)
         yesterday = datetime.now() - timedelta(hours=12)
-        cached = (
+        cached_db = (
             self.db.query(SentimentScore)
             .filter(SentimentScore.ticker == ticker, SentimentScore.timestamp > yesterday)
             .order_by(SentimentScore.timestamp.desc())
             .first()
         )
 
-        if cached:
-            return {
-                "score": cached.score,
-                "subjectivity": cached.subjectivity,
-                "article_count": cached.article_count,
+        if cached_db:
+            result = {
+                "score": cached_db.score,
+                "subjectivity": cached_db.subjectivity,
+                "article_count": cached_db.article_count,
                 "source": "cache",
             }
+            cache.set_sentiment(ticker, result)
+            return result
 
+        # 3. Live fetch
         news = self.fetch_finnhub_news(ticker)
         if not news:
             return {"score": 0.0, "subjectivity": 0.0, "article_count": 0, "source": "none"}
@@ -55,12 +66,14 @@ class SentimentService:
         self.db.add(new_score)
         self.db.commit()
 
-        return {
+        result = {
             "score": avg_polarity,
             "subjectivity": avg_subjectivity,
             "article_count": count,
             "source": "live",
         }
+        cache.set_sentiment(ticker, result)
+        return result
 
     def fetch_finnhub_news(self, ticker: str) -> list:
         import requests

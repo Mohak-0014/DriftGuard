@@ -3,11 +3,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, ReadSessionLocal
 from app.core import security
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 def get_db() -> Generator:
     try:
@@ -15,6 +16,16 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
+
+def get_read_db() -> Generator:
+    """Read-only session — routed to the replica when DATABASE_READ_URL is set."""
+    try:
+        db = ReadSessionLocal()
+        yield db
+    finally:
+        db.close()
+
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     credentials_exception = HTTPException(

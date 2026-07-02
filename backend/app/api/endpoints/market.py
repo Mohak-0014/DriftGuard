@@ -1,7 +1,8 @@
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.api import deps
+from app.core.limiter import limiter
 from app.services.market_data import MarketDataService
 from pydantic import BaseModel
 
@@ -14,7 +15,7 @@ class TickerList(BaseModel):
 @router.get("/search")
 def search_tickers(
     q: str,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_read_db),
 ) -> Any:
     """
     Search for tickers.
@@ -25,10 +26,11 @@ def search_tickers(
     return service.search_ticker(q)
 
 @router.post("/update")
+@limiter.limit("30/minute")
 def update_prices(
+    request: Request,
     ticker_list: TickerList,
     db: Session = Depends(deps.get_db),
-    # current_user: User = Depends(deps.get_current_user) # Optional: restrict to users
 ) -> Any:
     service = MarketDataService(db)
     result = service.fetch_and_store_prices(ticker_list.tickers)
@@ -38,8 +40,8 @@ def update_prices(
 
 @router.get("/latest")
 def get_latest_prices(
-    tickers: str, # Comma separated
-    db: Session = Depends(deps.get_db),
+    tickers: str,  # Comma separated
+    db: Session = Depends(deps.get_read_db),
 ) -> Any:
     ticker_list = tickers.split(",")
     service = MarketDataService(db)
@@ -49,8 +51,7 @@ from app.services.sentiment import SentimentService
 @router.get("/sentiment/{ticker}")
 def get_sentiment_for_ticker(
     ticker: str,
-    db: Session = Depends(deps.get_db),
-    # current_user: User = Depends(deps.get_current_user),
+    db: Session = Depends(deps.get_read_db),
 ) -> Any:
     """
     Get sentiment (polarity, subjectivity) for a ticker.
@@ -62,7 +63,7 @@ def get_sentiment_for_ticker(
 def get_volatility_history(
     ticker: str,
     days: int = 90,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_read_db),
 ) -> Any:
     """
     Get historical volatility for a ticker.

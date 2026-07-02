@@ -1,92 +1,65 @@
 import React from 'react';
-import {
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    AreaChart,
-    Area
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-interface PortfolioHistoryChartProps {
-    currentValue: number;
-}
+interface PortfolioHistoryChartProps { currentValue: number; }
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="rounded-lg px-3 py-2 text-xs shadow-xl"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+            <p style={{ color: 'var(--text-muted)' }}>{label}</p>
+            <p className="font-semibold mt-0.5" style={{ color: 'var(--accent)' }}>
+                ${Number(payload[0].value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+        </div>
+    );
+};
 
 const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ currentValue }) => {
-    // Generate mock history data based on current value
-    // Simulating a 6-month growth trend
     const data = React.useMemo(() => {
-        const history = [];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-        let value = currentValue * 0.85; // Start at 85% of current value
-
-        for (let i = 0; i < 6; i++) {
-            // Add some random fluctuation but general upward trend to match current value at end
-            const volatility = (Math.random() - 0.3) * 0.05; // -1.5% to +3.5%
-            value = value * (1 + volatility);
-
-            // Ensure the last point matches current value closely
-            if (i === 5) value = currentValue;
-
-            history.push({
-                name: months[i],
-                value: Number(value.toFixed(2))
-            });
-        }
-        return history;
+        let v = currentValue * 0.82;
+        return months.map((name, i) => {
+            v = v * (1 + (Math.random() - 0.25) * 0.06);
+            if (i === months.length - 1) v = currentValue;
+            return { name, value: +v.toFixed(2) };
+        });
     }, [currentValue]);
 
     return (
-        <div className="h-[300px] w-full min-h-[300px]">
+        <div className="h-44 w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                    data={data}
-                    margin={{
-                        top: 10,
-                        right: 10,
-                        left: 0,
-                        bottom: 0,
-                    }}
-                >
+                <AreaChart data={data} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
                     <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1} />
-                            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                        <linearGradient id="valueGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                     <XAxis
                         dataKey="name"
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: '#64748b', fontSize: 12 }}
-                        dy={10}
+                        tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                        dy={8}
                     />
                     <YAxis
-                        hide={false}
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: '#64748b', fontSize: 12 }}
-                        tickFormatter={(value) => `$${value.toLocaleString()}`}
+                        tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                        tickFormatter={v => `$${(v / 1000).toFixed(0)}k`}
                         domain={['auto', 'auto']}
+                        width={40}
                     />
-                    <Tooltip
-                        contentStyle={{
-                            backgroundColor: '#fff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                        }}
-                        formatter={(value: any) => [`$${value.toLocaleString()}`, 'Portfolio Value']}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Area
                         type="monotone"
                         dataKey="value"
-                        stroke="#4f46e5"
+                        stroke="#6366f1"
                         strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorValue)"
+                        fill="url(#valueGrad)"
                     />
                 </AreaChart>
             </ResponsiveContainer>
