@@ -91,7 +91,6 @@ databases:
   - name: driftguard-db
     plan: free
     databaseName: portfolio_db
-    user: postgres
 
   - name: driftguard-redis
     plan: free
