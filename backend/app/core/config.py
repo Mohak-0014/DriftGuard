@@ -2,7 +2,8 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Hybrid Portfolio Rebalancing System"
+    PROJECT_NAME: str = "DriftGuard — Portfolio Rebalancing System"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
@@ -10,17 +11,19 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "portfolio_db")
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_SERVER}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        f"postgresql://{os.getenv('POSTGRES_USER','postgres')}:{os.getenv('POSTGRES_PASSWORD','postgres')}@{os.getenv('POSTGRES_SERVER','localhost')}:{os.getenv('POSTGRES_PORT','5432')}/{os.getenv('POSTGRES_DB','portfolio_db')}"
         if os.getenv("POSTGRES_SERVER")
         else "sqlite:///./rebalance.db"
     )
-    
-    
+
     CHROMA_DB_URL: str = os.getenv("CHROMA_DB_URL", "http://localhost:8000")
-    
-    # External APIs
-    ALPHAVANTAGE_API_KEY: str = os.getenv("ALPHAVANTAGE_API_KEY", "9QYG5R7WWHOVNJ2M")
-    FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "d6896c1r01qi2if78q3gd6896c1r01qi2if78q40")
+
+    # CORS — comma-separated list of allowed origins
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
+
+    # External APIs — no hardcoded fallbacks; set these in .env
+    ALPHAVANTAGE_API_KEY: str = os.getenv("ALPHAVANTAGE_API_KEY", "")
+    FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
     # Email
@@ -34,5 +37,4 @@ class Settings(BaseSettings):
         case_sensitive = True
         env_file = ".env"
 
-settings = Settings()
 settings = Settings()

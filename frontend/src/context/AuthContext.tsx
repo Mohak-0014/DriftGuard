@@ -13,14 +13,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-    const [token, setToken] = useState<string | null>(null);
-
-    useEffect(() => {
-        const isAuth = checkAuth();
-        setIsAuthenticated(isAuth);
-        setToken(localStorage.getItem('token'));
-    }, []);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => checkAuth());
+    const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
 
     const login = async (email: string, password: string) => {
         const data = await apiLogin(email, password);

@@ -1,3 +1,5 @@
+import logging
+import re
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -5,15 +7,50 @@ from app.api import deps
 from app.models.user import User
 from app.models.portfolio import Portfolio, Holding
 from app.services.currency import currency_service
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,10}$")
+_ALLOWED_CURRENCIES = {"USD", "EUR", "INR"}
 
 class HoldingCreate(BaseModel):
     ticker: str
     quantity: float
     avg_price: float = 0.0
-    currency: str = "USD"  # USD, EUR, INR
+    currency: str = "USD"
+
+    @field_validator("ticker")
+    @classmethod
+    def validate_ticker(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not _TICKER_RE.match(v):
+            raise ValueError("Ticker must be 1–10 uppercase alphanumeric characters")
+        return v
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("Quantity must be greater than zero")
+        return v
+
+    @field_validator("avg_price")
+    @classmethod
+    def validate_avg_price(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("Average price cannot be negative")
+        return v
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, v: str) -> str:
+        v = v.upper()
+        if v not in _ALLOWED_CURRENCIES:
+            raise ValueError(f"Currency must be one of {sorted(_ALLOWED_CURRENCIES)}")
+        return v
 
 class PortfolioCreate(BaseModel):
     name: str
@@ -132,10 +169,10 @@ def add_holding(
     from app.services.market_data import MarketDataService
     md_service = MarketDataService(db)
     try:
-        print(f"Fetching initial data for {holding.ticker}...")
+        logger.info("Fetching initial price data for %s", holding.ticker)
         md_service.fetch_and_store_prices([holding.ticker])
-    except Exception as e:
-        print(f"Warning: Failed to fetch initial data for {holding.ticker}: {e}")
+    except Exception as exc:
+        logger.warning("Failed to fetch initial data for %s: %s", holding.ticker, exc)
 
     return portfolio_to_response(portfolio)
 
