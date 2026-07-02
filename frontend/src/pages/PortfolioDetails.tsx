@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getPortfolio, optimizePortfolio, addHolding, applyRebalance, getOptimizationResult, CURRENCY_SYMBOLS, updateHolding, deleteHolding } from '../services/portfolioService';
+import {
+    getPortfolio, optimizePortfolio, addHolding, applyRebalance,
+    getOptimizationResult, CURRENCY_SYMBOLS, updateHolding, deleteHolding,
+} from '../services/portfolioService';
 import type { Portfolio } from '../services/portfolioService';
 import { getLatestPrices, updatePrices, getSentiment } from '../services/marketService';
 import type { SentimentData } from '../services/marketService';
@@ -10,7 +13,20 @@ import DriftAlert from '../components/DriftAlert';
 import PortfolioHistoryChart from '../components/PortfolioHistoryChart';
 import AnalyticsTab from '../components/AnalyticsTab';
 import TickerSearch from '../components/TickerSearch';
-import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'; // Assuming you have heroicons or use text
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+
+const TabBtn = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+        onClick={onClick}
+        className="px-4 py-2.5 text-sm font-medium rounded-lg transition-all"
+        style={active
+            ? { background: 'var(--accent-dim)', color: 'var(--accent-hover)' }
+            : { color: 'var(--text-secondary)', background: 'transparent' }
+        }
+    >
+        {children}
+    </button>
+);
 
 const PortfolioDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -18,7 +34,7 @@ const PortfolioDetails: React.FC = () => {
     const [optimizationResult, setOptimizationResult] = useState<any>(null);
     const [explanation, setExplanation] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [logging, setLogging] = useState(false); // State for logging action
+    const [applying, setApplying] = useState(false);
     const [prices, setPrices] = useState<Record<string, number>>({});
     const [sentimentData, setSentimentData] = useState<Record<string, SentimentData>>({});
     const [showModal, setShowModal] = useState(false);
@@ -27,231 +43,148 @@ const PortfolioDetails: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'overview' | 'analytics'>('overview');
 
     useEffect(() => {
-        if (id) {
-            loadPortfolio(parseInt(id));
-        }
+        if (id) loadPortfolio(parseInt(id));
     }, [id]);
 
-    // Poll for explanation
     useEffect(() => {
-        let intervalId: ReturnType<typeof setInterval>;
-        if (optimizationResult?.optimization_id && !explanation) {
-            const pollExplanation = async () => {
-                try {
-                    const res = await getOptimizationResult(optimizationResult.optimization_id);
-                    if (res.status === 'COMPLETED' && res.explanation) {
-                        setExplanation(res.explanation);
-                        clearInterval(intervalId);
-                    } else if (res.status === 'FAILED') {
-                        setExplanation("Failed to generate insights.");
-                        clearInterval(intervalId);
-                    }
-                } catch (e) {
-                    console.error("Polling failed", e);
-                }
-            };
-
-            pollExplanation(); // Initial check
-            intervalId = setInterval(pollExplanation, 2000); // Poll every 2s
-        }
-        return () => {
-            if (intervalId) clearInterval(intervalId);
+        if (!optimizationResult?.optimization_id || explanation) return;
+        let id: ReturnType<typeof setInterval>;
+        const poll = async () => {
+            try {
+                const res = await getOptimizationResult(optimizationResult.optimization_id);
+                if (res.status === 'COMPLETED' && res.explanation) { setExplanation(res.explanation); clearInterval(id); }
+                else if (res.status === 'FAILED') { setExplanation('Could not generate insights.'); clearInterval(id); }
+            } catch { /* keep polling */ }
         };
+        poll();
+        id = setInterval(poll, 2000);
+        return () => clearInterval(id);
     }, [optimizationResult, explanation]);
 
     const loadPortfolio = async (portfolioId: number) => {
-        try {
-            const data = await getPortfolio(portfolioId);
-            setPortfolio(data);
-            if (data && data.holdings.length > 0) {
-                const tickers = data.holdings.map(h => h.ticker);
-                updatePrices(tickers).then(() => {
-                    fetchPrices(tickers);
-                }).catch(err => console.error("Update failed", err));
-                fetchPrices(tickers);
-                fetchSentiment(tickers);
-            }
-        } catch (error) {
-            console.error("Failed to load portfolio", error);
+        const data = await getPortfolio(portfolioId).catch(() => null);
+        if (!data) return;
+        setPortfolio(data);
+        if (data.holdings.length > 0) {
+            const tickers = data.holdings.map(h => h.ticker);
+            updatePrices(tickers).then(() => fetchPrices(tickers)).catch(() => {});
+            fetchPrices(tickers);
+            fetchSentiment(tickers);
         }
-    };
-
-    const fetchSentiment = async (tickers: string[]) => {
-        const data: Record<string, SentimentData> = {};
-        await Promise.all(tickers.map(async (t) => {
-            try {
-                const s = await getSentiment(t);
-                data[t] = s;
-            } catch (e) {
-                console.error(`Failed to fetch sentiment for ${t}`, e);
-            }
-        }));
-        setSentimentData(data);
     };
 
     const fetchPrices = async (tickers: string[]) => {
+        const data = await getLatestPrices(tickers).catch(() => ({}));
+        setPrices(data);
+    };
+
+    const fetchSentiment = async (tickers: string[]) => {
+        const results: Record<string, SentimentData> = {};
+        await Promise.all(tickers.map(async t => {
+            try { results[t] = await getSentiment(t); } catch { /* no sentiment */ }
+        }));
+        setSentimentData(results);
+    };
+
+    const calculateCurrentWeights = () => {
+        if (!portfolio) return {};
+        const total = portfolio.total_value_usd || portfolio.holdings.reduce((s, h) => s + (h.value_in_usd || h.quantity * h.avg_price), 0);
+        if (total === 0) return {};
+        return Object.fromEntries(
+            portfolio.holdings.map(h => [h.ticker, (h.value_in_usd || h.quantity * h.avg_price) / total])
+        );
+    };
+
+    const handleOptimize = async () => {
+        if (!id) return;
+        setLoading(true);
+        setExplanation(null);
         try {
-            const priceData = await getLatestPrices(tickers);
-            setPrices(priceData);
-        } catch (error) {
-            console.error("Failed to fetch prices", error);
-        }
+            const result = await optimizePortfolio(parseInt(id));
+            setOptimizationResult(result);
+        } catch {
+            alert('Optimization failed. Ensure market data is available.');
+        } finally { setLoading(false); }
     };
 
-    const handleOpenAdd = () => {
-        setIsEditing(false);
-        setHoldingForm({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' });
-        setShowModal(true);
-    };
-
-    const handleOpenEdit = (holding: any) => {
-        setIsEditing(true);
-        setHoldingForm({
-            ticker: holding.ticker,
-            quantity: holding.quantity,
-            avg_price: holding.avg_price,
-            currency: holding.currency
-        });
-        setShowModal(true);
-    };
-
-    const handleDelete = async (ticker: string) => {
-        if (!id || !confirm(`Are you sure you want to remove ${ticker}?`)) return;
+    const handleAccept = async () => {
+        if (!id || !optimizationResult) return;
+        setApplying(true);
         try {
-            await deleteHolding(parseInt(id), ticker);
+            await applyRebalance(parseInt(id), optimizationResult.optimized_weights);
+            setOptimizationResult(null);
             loadPortfolio(parseInt(id));
-        } catch (error) {
-            console.error("Failed to delete holding", error);
-            alert("Failed to delete holding.");
-        }
+        } catch { alert('Failed to apply rebalancing.'); }
+        finally { setApplying(false); }
     };
 
     const handleSubmitHolding = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!id) return;
         try {
-            if (isEditing) {
-                await updateHolding(parseInt(id), holdingForm.ticker, holdingForm);
-            } else {
-                await addHolding(parseInt(id), holdingForm);
-            }
+            if (isEditing) await updateHolding(parseInt(id), holdingForm.ticker, holdingForm);
+            else await addHolding(parseInt(id), holdingForm);
             setShowModal(false);
             loadPortfolio(parseInt(id));
-        } catch (error) {
-            console.error("Failed to save holding", error);
-            alert("Failed to save holding.");
-        }
+        } catch { alert('Failed to save holding.'); }
     };
 
-    const handleOptimize = async () => {
-        if (!id) return;
-        setLoading(true);
-        try {
-            const result = await optimizePortfolio(parseInt(id));
-            setOptimizationResult(result);
-            setExplanation(null);
-        } catch (error) {
-            console.error("Optimization failed", error);
-            alert("Optimization failed. Ensure market data is available.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const calculateCurrentWeights = () => {
-        if (!portfolio) return {};
-        const totalValueUsd = portfolio.total_value_usd || portfolio.holdings.reduce(
-            (sum, h) => sum + (h.value_in_usd || h.quantity * h.avg_price), 0
-        );
-        const weights: Record<string, number> = {};
-        if (totalValueUsd > 0) {
-            portfolio.holdings.forEach(h => {
-                const valueUsd = h.value_in_usd || h.quantity * h.avg_price;
-                weights[h.ticker] = valueUsd / totalValueUsd;
-            });
-        }
-        return weights;
-    };
-
-    const handleAccept = async () => {
-        if (!id || !optimizationResult || !portfolio) return;
-        setLogging(true);
-        try {
-            await applyRebalance(parseInt(id), optimizationResult.optimized_weights);
-            alert("Portfolio rebalanced successfully! Holdings have been updated.");
-            setOptimizationResult(null);
-            loadPortfolio(parseInt(id));
-        } catch (error) {
-            console.error("Failed to apply rebalance", error);
-            alert("Failed to apply rebalancing strategy.");
-        } finally {
-            setLogging(false);
-        }
+    const handleDelete = async (ticker: string) => {
+        if (!id || !confirm(`Remove ${ticker} from this portfolio?`)) return;
+        try { await deleteHolding(parseInt(id), ticker); loadPortfolio(parseInt(id)); }
+        catch { alert('Failed to delete holding.'); }
     };
 
     if (!portfolio) return (
-        <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <div className="flex items-center justify-center h-64">
+            <div className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin"
+                style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
         </div>
     );
 
     const currentWeights = calculateCurrentWeights();
-    const displayTotalValue = portfolio.total_value_usd || 0;
+    const displayValue = portfolio.total_value_usd ?? 0;
 
     const isOptimal = optimizationResult && (() => {
-        const targetWeights = optimizationResult.optimized_weights;
-        const tickers = new Set([...Object.keys(currentWeights), ...Object.keys(targetWeights)]);
-        let maxDeviation = 0;
-        tickers.forEach(ticker => {
-            const current = currentWeights[ticker] || 0;
-            const target = targetWeights[ticker] || 0;
-            maxDeviation = Math.max(maxDeviation, Math.abs(current - target));
-        });
-        return maxDeviation < 0.01;
+        const t = optimizationResult.optimized_weights;
+        const keys = new Set([...Object.keys(currentWeights), ...Object.keys(t)]);
+        return Math.max(...Array.from(keys).map(k => Math.abs((currentWeights[k] ?? 0) - (t[k] ?? 0)))) < 0.01;
     })();
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="bg-white shadow-sm border border-slate-200 rounded-lg p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <div>
-                    <div className="flex items-center space-x-2 text-sm text-slate-500 mb-1">
-                        <Link to="/" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
-                        <span>/</span>
-                        <span>Portfolio Details</span>
-                    </div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{portfolio.name}</h1>
+        <div className="space-y-5 fade-up">
+            {/* Breadcrumb + header */}
+            <div>
+                <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                    <Link to="/" className="hover:text-[var(--accent)] transition-colors">Dashboard</Link>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span style={{ color: 'var(--text-secondary)' }}>{portfolio.name}</span>
                 </div>
-                <div className="mt-4 sm:mt-0 text-right">
-                    <p className="text-sm font-medium text-slate-500">Total Value (USD)</p>
-                    <p className="text-4xl font-bold text-indigo-600 tracking-tight">
-                        ${displayTotalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+                            {portfolio.name}
+                        </h1>
+                        <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                            {portfolio.holdings.length} holdings
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-xs font-semibold mb-0.5 uppercase tracking-wider"
+                            style={{ color: 'var(--text-muted)' }}>Total Value</p>
+                        <p className="text-3xl font-bold" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+                            ${displayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                    </div>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="border-b border-slate-200">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    <button
-                        onClick={() => setActiveTab('overview')}
-                        className={`${activeTab === 'overview'
-                            ? 'border-indigo-500 text-indigo-600'
-                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-                    >
-                        Overview
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('analytics')}
-                        className={`${activeTab === 'analytics'
-                            ? 'border-indigo-500 text-indigo-600'
-                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors`}
-                    >
-                        Risk & Performance
-                    </button>
-                </nav>
+            <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <TabBtn active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>Overview</TabBtn>
+                <TabBtn active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')}>Risk & Analytics</TabBtn>
             </div>
 
             {activeTab === 'analytics' ? (
@@ -259,86 +192,115 @@ const PortfolioDetails: React.FC = () => {
             ) : (
                 <>
                     {optimizationResult && (
-                        <DriftAlert
-                            currentWeights={currentWeights}
-                            targetWeights={optimizationResult.optimized_weights}
-                        />
+                        <DriftAlert currentWeights={currentWeights} targetWeights={optimizationResult.optimized_weights} />
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Left Column: History & Stats */}
-                        <div className="lg:col-span-2 space-y-6">
-                            {/* History Chart */}
-                            <div className="bg-white shadow-sm border border-slate-200 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold text-slate-900 mb-4">Value History</h3>
-                                <PortfolioHistoryChart currentValue={displayTotalValue} />
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                        {/* Main column */}
+                        <div className="lg:col-span-2 space-y-5">
+                            {/* History chart */}
+                            <div className="card p-5">
+                                <h3 className="text-sm font-semibold mb-4"
+                                    style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.7rem' }}>
+                                    Value History
+                                </h3>
+                                <PortfolioHistoryChart currentValue={displayValue} />
                             </div>
 
-                            {/* Holdings Table */}
-                            <div className="bg-white shadow-sm border border-slate-200 rounded-lg overflow-hidden">
-                                <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                                    <h3 className="text-lg font-semibold text-slate-900">Holdings</h3>
+                            {/* Holdings table */}
+                            <div className="card overflow-hidden">
+                                <div className="px-5 py-4 flex items-center justify-between border-b"
+                                    style={{ borderColor: 'var(--border)' }}>
+                                    <h3 className="text-sm font-semibold"
+                                        style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.7rem' }}>
+                                        Holdings
+                                    </h3>
                                     <button
-                                        onClick={handleOpenAdd}
-                                        className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm"
-                                    >
-                                        + Add Stock
+                                        onClick={() => { setIsEditing(false); setHoldingForm({ ticker: '', quantity: 0, avg_price: 0, currency: 'USD' }); setShowModal(true); }}
+                                        className="btn btn-ghost text-xs px-2.5 py-1">
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add holding
                                     </button>
                                 </div>
+
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-slate-200">
-                                        <thead className="bg-slate-50">
+                                    <table>
+                                        <thead>
                                             <tr>
-                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ticker</th>
-                                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Sentiment</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Qty</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Avg Price</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Cur Price</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Value</th>
-                                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+                                                <th className="text-left">Ticker</th>
+                                                <th className="text-left">Sentiment</th>
+                                                <th className="text-right">Qty</th>
+                                                <th className="text-right">Avg Price</th>
+                                                <th className="text-right">Cur Price</th>
+                                                <th className="text-right">Value</th>
+                                                <th className="text-right">Weight</th>
+                                                <th />
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-white divide-y divide-slate-200">
-                                            {portfolio.holdings.map((holding) => {
-                                                const currentPrice = prices[holding.ticker] || 0;
-                                                const currentValue = currentPrice * holding.quantity;
-                                                const holdingSymbol = CURRENCY_SYMBOLS[holding.currency] || '$';
+                                        <tbody>
+                                            {portfolio.holdings.map(holding => {
+                                                const curPrice = prices[holding.ticker] ?? 0;
+                                                const curValue = curPrice > 0 ? curPrice * holding.quantity : holding.value_in_usd ?? 0;
+                                                const sym = CURRENCY_SYMBOLS[holding.currency] || '$';
+                                                const weight = currentWeights[holding.ticker] ?? 0;
                                                 const sentiment = sentimentData[holding.ticker];
+                                                const pnlPct = holding.avg_price > 0 && curPrice > 0
+                                                    ? ((curPrice - holding.avg_price) / holding.avg_price) * 100
+                                                    : null;
 
                                                 return (
-                                                    <tr key={holding.ticker} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{holding.ticker}</td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                                    <tr key={holding.ticker}>
+                                                        <td>
+                                                            <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                                                {holding.ticker}
+                                                            </div>
+                                                            {pnlPct !== null && (
+                                                                <div className="text-xs mt-0.5"
+                                                                    style={{ color: pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                                                                    {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td>
                                                             <SentimentIndicator
                                                                 score={sentiment?.score ?? null}
                                                                 articleCount={sentiment?.article_count}
                                                                 subjectivity={sentiment?.subjectivity}
-                                                                loading={!sentiment && !sentimentData}
+                                                                loading={!sentiment}
                                                             />
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-right">{holding.quantity}</td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-right">{holdingSymbol}{holding.avg_price.toFixed(2)}</td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-right">
-                                                            {currentPrice > 0 ? `${holdingSymbol}${currentPrice.toFixed(2)}` : '-'}
+                                                        <td className="text-right" style={{ color: 'var(--text-secondary)' }}>
+                                                            {holding.quantity}
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 text-right">
-                                                            {currentValue > 0 ? `${holdingSymbol}${currentValue.toFixed(2)}` : '-'}
+                                                        <td className="text-right" style={{ color: 'var(--text-secondary)' }}>
+                                                            {sym}{holding.avg_price.toFixed(2)}
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                                            <div className="flex justify-end space-x-2">
+                                                        <td className="text-right" style={{ color: 'var(--text-primary)' }}>
+                                                            {curPrice > 0 ? `${sym}${curPrice.toFixed(2)}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                                        </td>
+                                                        <td className="text-right font-medium" style={{ color: 'var(--text-primary)' }}>
+                                                            {curValue > 0 ? `${sym}${curValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                                        </td>
+                                                        <td className="text-right">
+                                                            <span className="badge badge-blue">
+                                                                {(weight * 100).toFixed(1)}%
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <div className="flex items-center justify-end gap-1">
                                                                 <button
-                                                                    onClick={() => handleOpenEdit(holding)}
-                                                                    className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50 transition-colors"
-                                                                    title="Edit"
-                                                                >
-                                                                    <PencilIcon className="h-5 w-5" aria-hidden="true" />
+                                                                    onClick={() => { setIsEditing(true); setHoldingForm({ ticker: holding.ticker, quantity: holding.quantity, avg_price: holding.avg_price, currency: holding.currency }); setShowModal(true); }}
+                                                                    className="w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)]"
+                                                                    style={{ color: 'var(--text-muted)' }}>
+                                                                    <PencilIcon className="w-3.5 h-3.5" />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDelete(holding.ticker)}
-                                                                    className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition-colors"
-                                                                    title="Delete"
-                                                                >
-                                                                    <TrashIcon className="h-5 w-5" aria-hidden="true" />
+                                                                    className="w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-red-500/10"
+                                                                    style={{ color: 'var(--text-muted)' }}>
+                                                                    <TrashIcon className="w-3.5 h-3.5" />
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -351,128 +313,137 @@ const PortfolioDetails: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Right Column: Optimization & Actions */}
-                        <div className="space-y-6">
-                            {/* Allocation Chart */}
-                            <div className="bg-white shadow-sm border border-slate-200 rounded-lg p-6">
-                                <h3 className="text-lg font-semibold text-slate-900 mb-4">Allocation</h3>
-                                <div className="h-64">
+                        {/* Right column */}
+                        <div className="space-y-5">
+                            {/* Allocation chart */}
+                            <div className="card p-5">
+                                <h3 className="text-xs font-semibold mb-4 uppercase tracking-wider"
+                                    style={{ color: 'var(--text-secondary)' }}>Allocation</h3>
+                                <div className="h-52">
                                     <AllocationChart holdings={portfolio.holdings} />
-                                </div>
-                                <div className="mt-6">
-                                    <button
-                                        onClick={handleOptimize}
-                                        disabled={loading}
-                                        className="w-full bg-indigo-600 border border-transparent rounded-lg shadow-sm py-2.5 px-4 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all duration-200"
-                                    >
-                                        {loading ? 'Running Optimization...' : 'Run Optimization'}
-                                    </button>
-                                    <p className="mt-2 text-xs text-center text-slate-500">
-                                        Analyzes market data to suggest optimal weights.
-                                    </p>
                                 </div>
                             </div>
 
-                            {/* Optimization Results (if available) */}
-                            {optimizationResult && (
-                                <div className="bg-white shadow-sm border border-slate-200 rounded-lg p-6 border-l-4 border-indigo-500 animate-in slide-in-from-right duration-300">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-semibold text-slate-900">Proposed Strategy</h3>
-                                    </div>
+                            {/* Optimize card */}
+                            <div className="card p-5">
+                                <h3 className="text-xs font-semibold mb-1 uppercase tracking-wider"
+                                    style={{ color: 'var(--text-secondary)' }}>AI Optimization</h3>
+                                <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+                                    Mean-variance optimization with sentiment weighting.
+                                </p>
+                                <button
+                                    onClick={handleOptimize}
+                                    disabled={loading}
+                                    className="btn btn-primary w-full"
+                                >
+                                    {loading ? (
+                                        <span className="flex items-center gap-2">
+                                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Optimizing…
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                            Run Optimization
+                                        </>
+                                    )}
+                                </button>
+                            </div>
 
-                                    {/* AI Explanation Block */}
-                                    <div className="mb-6 bg-indigo-50 rounded-md p-4">
-                                        <h4 className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2 flex items-center">
-                                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            {/* Optimization result */}
+                            {optimizationResult && (
+                                <div className="card p-5 space-y-4"
+                                    style={{ borderLeft: '3px solid var(--accent)' }}>
+                                    <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                        Proposed Strategy
+                                    </h3>
+
+                                    {/* AI Explanation */}
+                                    <div className="rounded-lg p-4" style={{ background: 'var(--bg-elevated)' }}>
+                                        <p className="text-xs font-semibold mb-2 uppercase tracking-wider flex items-center gap-1.5"
+                                            style={{ color: 'var(--accent)' }}>
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
                                             AI Analysis
-                                        </h4>
+                                        </p>
                                         {explanation ? (
-                                            <p className="text-sm text-indigo-900 leading-relaxed">{explanation}</p>
+                                            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                                                {explanation}
+                                            </p>
                                         ) : (
-                                            <div className="flex items-center space-x-2 text-sm text-indigo-700">
-                                                <div className="animate-spin h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full"></div>
-                                                <span>Generating insights...</span>
+                                            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                <span className="w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin"
+                                                    style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
+                                                Generating insights…
                                             </div>
                                         )}
                                     </div>
 
-                                    <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 mb-4">
-                                        <div className="sm:col-span-1">
-                                            <dt className="text-xs font-medium text-slate-500 uppercase">Return</dt>
-                                            <dd className="mt-1 text-lg font-semibold text-green-600">
-                                                {(optimizationResult.metrics.expected_return * 100).toFixed(2)}%
-                                            </dd>
-                                        </div>
-                                        <div className="sm:col-span-1">
-                                            <dt className="text-xs font-medium text-slate-500 uppercase">Risk</dt>
-                                            <dd className="mt-1 text-lg font-semibold text-red-600">
-                                                {(optimizationResult.metrics.volatility * 100).toFixed(2)}%
-                                            </dd>
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <dt className="text-xs font-medium text-slate-500 uppercase">Sharpe Ratio</dt>
-                                            <dd className="mt-1 text-lg font-semibold text-slate-900">
-                                                {optimizationResult.metrics.sharpe_ratio.toFixed(2)}
-                                            </dd>
-                                        </div>
-                                    </dl>
+                                    {/* Metrics */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {[
+                                            { label: 'Return', value: `${(optimizationResult.metrics.expected_return * 100).toFixed(2)}%`, color: 'var(--green)' },
+                                            { label: 'Risk', value: `${(optimizationResult.metrics.volatility * 100).toFixed(2)}%`, color: 'var(--red)' },
+                                            { label: 'Sharpe', value: optimizationResult.metrics.sharpe_ratio.toFixed(2), color: 'var(--text-primary)' },
+                                        ].map(m => (
+                                            <div key={m.label} className="rounded-lg p-3 text-center"
+                                                style={{ background: 'var(--bg-elevated)' }}>
+                                                <p className="text-lg font-bold" style={{ color: m.color, fontFamily: 'Outfit, sans-serif' }}>
+                                                    {m.value}
+                                                </p>
+                                                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{m.label}</p>
+                                            </div>
+                                        ))}
+                                    </div>
 
-                                    <div className="border-t border-slate-200 pt-4">
-                                        <h4 className="text-xs font-medium text-slate-500 uppercase mb-2">Allocation Changes</h4>
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-slate-200">
-                                                <thead className="bg-slate-50">
-                                                    <tr>
-                                                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Ticker</th>
-                                                        <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Current</th>
-                                                        <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Target</th>
-                                                        <th scope="col" className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Change</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="bg-white divide-y divide-slate-200">
-                                                    {Object.entries(optimizationResult.optimized_weights).map(([ticker, weight]: [string, any]) => {
-                                                        const currentW = currentWeights[ticker] || 0;
-                                                        const targetW = weight;
-                                                        const delta = targetW - currentW;
-                                                        const isSignificant = Math.abs(delta) > 0.001;
-
-                                                        return (
-                                                            <tr key={ticker} className={!isSignificant ? 'opacity-60' : ''}>
-                                                                <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-slate-900">{ticker}</td>
-                                                                <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500 text-right">
-                                                                    {(currentW * 100).toFixed(1)}%
-                                                                </td>
-                                                                <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-900 text-right font-medium">
-                                                                    {(targetW * 100).toFixed(1)}%
-                                                                </td>
-                                                                <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-slate-400'
-                                                                    }`}>
-                                                                    {delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
+                                    {/* Allocation changes */}
+                                    <div>
+                                        <p className="text-xs font-semibold mb-2 uppercase tracking-wider"
+                                            style={{ color: 'var(--text-muted)' }}>Allocation Changes</p>
+                                        <div className="space-y-2">
+                                            {Object.entries(optimizationResult.optimized_weights).map(([ticker, weight]: [string, any]) => {
+                                                const current = currentWeights[ticker] ?? 0;
+                                                const delta = weight - current;
+                                                return (
+                                                    <div key={ticker} className="flex items-center justify-between text-xs">
+                                                        <span className="font-medium w-16" style={{ color: 'var(--text-primary)' }}>{ticker}</span>
+                                                        <div className="flex-1 mx-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                                                            <div className="h-full rounded-full transition-all"
+                                                                style={{ width: `${Math.min(weight * 100, 100)}%`, background: 'var(--accent)' }} />
+                                                        </div>
+                                                        <span style={{ color: 'var(--text-secondary)', minWidth: '36px', textAlign: 'right' }}>
+                                                            {(weight * 100).toFixed(1)}%
+                                                        </span>
+                                                        <span className="ml-2 w-12 text-right font-semibold"
+                                                            style={{ color: delta > 0.001 ? 'var(--green)' : delta < -0.001 ? 'var(--red)' : 'var(--text-muted)' }}>
+                                                            {delta > 0.001 ? '+' : ''}{(delta * 100).toFixed(1)}%
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
-                                    <div className="mt-6 flex space-x-3">
+                                    <div className="flex gap-2 pt-1">
                                         <button
                                             onClick={handleAccept}
-                                            disabled={logging || isOptimal}
-                                            className={`flex-1 border border-transparent rounded-md shadow-sm py-2 px-4 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors ${isOptimal ? 'bg-slate-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-                                                }`}
-                                        >
-                                            {logging ? 'Applying...' : 'Accept'}
+                                            disabled={applying || isOptimal}
+                                            className="btn flex-1"
+                                            style={{
+                                                background: isOptimal ? 'var(--bg-elevated)' : 'rgba(34,197,94,0.15)',
+                                                color: isOptimal ? 'var(--text-muted)' : '#4ade80',
+                                                border: `1px solid ${isOptimal ? 'var(--border)' : 'rgba(34,197,94,0.3)'}`,
+                                            }}>
+                                            {applying ? 'Applying…' : isOptimal ? 'Already optimal' : 'Accept'}
                                         </button>
                                         <button
-                                            onClick={() => {
-                                                setOptimizationResult(null);
-                                                setExplanation(null);
-                                            }}
-                                            className="flex-1 bg-white border border-slate-300 rounded-md shadow-sm py-2 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                                        >
+                                            onClick={() => { setOptimizationResult(null); setExplanation(null); }}
+                                            className="btn btn-ghost flex-1">
                                             Dismiss
                                         </button>
                                     </div>
@@ -480,91 +451,96 @@ const PortfolioDetails: React.FC = () => {
                             )}
                         </div>
                     </div>
-
-                    {/* Add/Edit Stock Modal */}
-                    {showModal && (
-                        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full animate-in zoom-in-95 duration-200">
-                                <h3 className="text-lg font-semibold text-slate-900 mb-4">{isEditing ? 'Edit Holding' : 'Add New Holding'}</h3>
-                                <form onSubmit={handleSubmitHolding} className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700">Ticker Symbol</label>
-                                        {isEditing ? (
-                                            <input
-                                                type="text"
-                                                disabled
-                                                className="mt-1 block w-full border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm"
-                                                value={holdingForm.ticker}
-                                            />
-                                        ) : (
-                                            <TickerSearch
-                                                onSelect={(ticker) => setHoldingForm({ ...holdingForm, ticker })}
-                                                placeholder="Search e.g. AAPL"
-                                                className="mt-1"
-                                            />
-                                        )}
-                                    </div>
-                                    {/* Hidden input to ensure state is bound if TickerSearch doesn't fully drive it or for fallback */}
-                                    {!isEditing && holdingForm.ticker && (
-                                        <p className="text-xs text-indigo-600">Selected: {holdingForm.ticker}</p>
-                                    )}
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700">Quantity</label>
-                                            <input
-                                                type="number"
-                                                required
-                                                step="any"
-                                                className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                                value={holdingForm.quantity}
-                                                onChange={(e) => setHoldingForm({ ...holdingForm, quantity: parseFloat(e.target.value) })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700">Avg Price</label>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                required
-                                                className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                                value={holdingForm.avg_price}
-                                                onChange={(e) => setHoldingForm({ ...holdingForm, avg_price: parseFloat(e.target.value) })}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700">Currency</label>
-                                        <select
-                                            className="mt-1 block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                            value={holdingForm.currency}
-                                            onChange={(e) => setHoldingForm({ ...holdingForm, currency: e.target.value })}
-                                        >
-                                            <option value="USD">$ USD - US Dollar</option>
-                                            <option value="EUR">€ EUR - Euro</option>
-                                            <option value="INR">₹ INR - Indian Rupee</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex justify-end space-x-3 mt-6 pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowModal(false)}
-                                            className="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="bg-indigo-600 border border-transparent rounded-md shadow-sm py-2 px-4 inline-flex justify-center text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                                        >
-                                            {isEditing ? 'Save Changes' : 'Add Holding'}
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
                 </>
+            )}
+
+            {/* Add / Edit holding modal */}
+            {showModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="w-full max-w-sm rounded-xl shadow-2xl p-6 fade-up"
+                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+                                {isEditing ? 'Edit Holding' : 'Add Holding'}
+                            </h3>
+                            <button onClick={() => setShowModal(false)}
+                                className="w-7 h-7 flex items-center justify-center rounded"
+                                style={{ color: 'var(--text-muted)' }}>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmitHolding} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+                                    style={{ color: 'var(--text-secondary)' }}>Ticker</label>
+                                {isEditing ? (
+                                    <input type="text" disabled value={holdingForm.ticker} className="w-full px-3 py-2.5 text-sm opacity-50" />
+                                ) : (
+                                    <>
+                                        <TickerSearch
+                                            onSelect={ticker => setHoldingForm({ ...holdingForm, ticker })}
+                                            placeholder="Search e.g. AAPL"
+                                        />
+                                        {holdingForm.ticker && (
+                                            <p className="text-xs mt-1" style={{ color: 'var(--accent)' }}>
+                                                Selected: {holdingForm.ticker}
+                                            </p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+                                        style={{ color: 'var(--text-secondary)' }}>Quantity</label>
+                                    <input
+                                        type="number" required step="any" min="0"
+                                        value={holdingForm.quantity || ''}
+                                        onChange={e => setHoldingForm({ ...holdingForm, quantity: parseFloat(e.target.value) || 0 })}
+                                        className="w-full px-3 py-2.5 text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+                                        style={{ color: 'var(--text-secondary)' }}>Avg Price</label>
+                                    <input
+                                        type="number" required step="any" min="0"
+                                        value={holdingForm.avg_price || ''}
+                                        onChange={e => setHoldingForm({ ...holdingForm, avg_price: parseFloat(e.target.value) || 0 })}
+                                        className="w-full px-3 py-2.5 text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider"
+                                    style={{ color: 'var(--text-secondary)' }}>Currency</label>
+                                <select
+                                    value={holdingForm.currency}
+                                    onChange={e => setHoldingForm({ ...holdingForm, currency: e.target.value })}
+                                    className="w-full px-3 py-2.5 text-sm"
+                                >
+                                    <option value="USD">$ USD</option>
+                                    <option value="EUR">€ EUR</option>
+                                    <option value="INR">₹ INR</option>
+                                </select>
+                            </div>
+
+                            <div className="flex gap-2 pt-1">
+                                <button type="button" onClick={() => setShowModal(false)} className="btn btn-ghost flex-1">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary flex-1">
+                                    {isEditing ? 'Save Changes' : 'Add Holding'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
         </div>
     );

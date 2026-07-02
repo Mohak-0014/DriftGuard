@@ -3,15 +3,19 @@ import { getPortfolioAnalytics } from '../services/portfolioService';
 import type { PortfolioAnalytics } from '../services/portfolioService';
 import VolatilityTrendChart from './VolatilityTrendChart';
 
-interface AnalyticsTabProps {
-    portfolioId: number;
-}
+interface AnalyticsTabProps { portfolioId: number; }
 
-const MetricCard: React.FC<{ title: string; value: string | number; description: string; color?: string }> = ({ title, value, description, color = "text-slate-900" }) => (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-        <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</h3>
-        <p className={`mt-2 text-3xl font-bold ${color}`}>{value}</p>
-        <p className="text-xs text-slate-500 mt-1">{description}</p>
+const MetricCard = ({
+    title, value, description, color,
+}: { title: string; value: string; description: string; color?: string }) => (
+    <div className="card p-5">
+        <p className="text-xs font-semibold mb-2 uppercase tracking-wider"
+            style={{ color: 'var(--text-muted)' }}>{title}</p>
+        <p className="text-3xl font-bold mb-1"
+            style={{ color: color ?? 'var(--text-primary)', fontFamily: 'Outfit, sans-serif' }}>
+            {value}
+        </p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{description}</p>
     </div>
 );
 
@@ -21,87 +25,88 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ portfolioId }) => {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchAnalytics = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const data = await getPortfolioAnalytics(portfolioId);
-                setAnalytics(data);
-            } catch (err) {
-                console.error("Failed to fetch analytics", err);
-                // Check if 400 (insufficient data) or other error
-                setError("Data unavailable. Ensure at least 1 year of price history exists for all assets.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (portfolioId) {
-            fetchAnalytics();
-        }
+        if (!portfolioId) return;
+        setLoading(true);
+        setError(null);
+        getPortfolioAnalytics(portfolioId)
+            .then(setAnalytics)
+            .catch(() => setError('Insufficient data. Ensure at least 1 year of price history exists for all holdings.'))
+            .finally(() => setLoading(false));
     }, [portfolioId]);
 
     if (loading) return (
-        <div className="flex justify-center items-center h-48">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="card p-5">
+                    <div className="skeleton h-3 w-1/3 mb-3" />
+                    <div className="skeleton h-8 w-1/2 mb-2" />
+                    <div className="skeleton h-3 w-3/4" />
+                </div>
+            ))}
         </div>
     );
 
     if (error) return (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-            <p className="text-amber-700 font-medium">Analysis Unavailable</p>
-            <p className="text-amber-600 text-sm mt-1">{error}</p>
+        <div className="card p-6 text-center">
+            <svg className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <p className="font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Analysis unavailable</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{error}</p>
         </div>
     );
 
     if (!analytics) return null;
 
+    const sharpeColor = analytics.sharpe_ratio > 1 ? 'var(--green)' : analytics.sharpe_ratio < 0 ? 'var(--red)' : 'var(--text-primary)';
+
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-5 fade-up">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <MetricCard
                     title="Sharpe Ratio"
                     value={analytics.sharpe_ratio.toFixed(2)}
-                    description="Return per unit of risk (higher is better)"
-                    color={analytics.sharpe_ratio > 1 ? "text-green-600" : (analytics.sharpe_ratio < 0 ? "text-red-600" : "text-slate-900")}
+                    description="Return per unit of risk — higher is better"
+                    color={sharpeColor}
                 />
                 <MetricCard
                     title="Sortino Ratio"
                     value={analytics.sortino_ratio.toFixed(2)}
                     description="Return per unit of downside risk"
-                    color={analytics.sortino_ratio > 1 ? "text-green-600" : "text-slate-900"}
+                    color={analytics.sortino_ratio > 1 ? 'var(--green)' : 'var(--text-primary)'}
                 />
                 <MetricCard
                     title="Max Drawdown"
                     value={`${(analytics.max_drawdown * 100).toFixed(2)}%`}
-                    description="Maximum observed loss from peak to trough"
-                    color="text-red-600"
+                    description="Largest peak-to-trough loss observed"
+                    color="var(--red)"
                 />
                 <MetricCard
-                    title="Value at Risk (95%)"
+                    title="VaR (95%)"
                     value={`${(analytics.value_at_risk_95 * 100).toFixed(2)}%`}
                     description="Max expected daily loss with 95% confidence"
                 />
                 <MetricCard
                     title="Volatility (Ann.)"
                     value={`${(analytics.volatility * 100).toFixed(2)}%`}
-                    description="Standard deviation of returns (annualized)"
+                    description="Annualized standard deviation of daily returns"
                 />
             </div>
 
-            {/* Volatility Trend Chart */}
-            <div className="bg-white shadow-sm border border-slate-200 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">Volatility Trend (30-Day Rolling)</h3>
-                <div className="h-64">
-                    <VolatilityTrendChart data={analytics.volatility_history || []} />
+            <div className="card p-5">
+                <h3 className="text-xs font-semibold mb-4 uppercase tracking-wider"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    30-Day Rolling Volatility
+                </h3>
+                <div className="h-56">
+                    <VolatilityTrendChart data={analytics.volatility_history ?? []} />
                 </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-500">
-                <p>
-                    <strong>Note:</strong> Metrics are calculated based on 2 years of historical data assuming current portfolio weights were held constant (Backcast). Risk-free rate assumed to be 0%.
-                </p>
-            </div>
+            <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
+                Metrics based on 2 years of historical price data with current weights held constant (backcast). Risk-free rate: 0%.
+            </p>
         </div>
     );
 };

@@ -8,38 +8,32 @@ interface SentimentIndicatorProps {
 }
 
 const SentimentIndicator: React.FC<SentimentIndicatorProps> = ({ score, articleCount, subjectivity, loading }) => {
-    if (loading) {
-        return <span className="animate-pulse bg-gray-300 h-4 w-12 rounded inline-block"></span>;
-    }
+    if (loading) return <div className="skeleton h-4 w-14 rounded-full" />;
+    if (score === null || score === undefined) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
 
-    if (score === null || score === undefined) {
-        return <span className="text-gray-400 text-xs">-</span>;
-    }
+    const isBullish = score > 0.1;
+    const isBearish = score < -0.1;
 
-    let color = "text-gray-500";
-    let icon = "😐";
-    let label = "Neutral";
-
-    if (score > 0.1) {
-        color = "text-green-600 font-medium";
-        icon = "🚀"; // or 📈
-        label = "Bullish";
-    } else if (score < -0.1) {
-        color = "text-red-600 font-medium";
-        icon = "🐻"; // or 📉
-        label = "Bearish";
-    }
+    const badgeClass = isBullish ? 'badge-green' : isBearish ? 'badge-red' : '';
+    const label = isBullish ? 'Bullish' : isBearish ? 'Bearish' : 'Neutral';
+    const labelColor = isBullish ? 'var(--green)' : isBearish ? 'var(--red)' : 'var(--text-muted)';
 
     return (
-        <div className="flex items-center space-x-1 group relative cursor-help">
-            <span className="text-lg">{icon}</span>
-            <span className={`text-sm ${color}`}>{score.toFixed(2)}</span>
+        <div className="group relative inline-flex items-center gap-1.5 cursor-help">
+            <span className={`badge ${badgeClass}`} style={!isBullish && !isBearish ? { background: 'var(--bg-hover)', color: 'var(--text-muted)' } : undefined}>
+                {label}
+            </span>
+            <span className="text-xs font-mono" style={{ color: labelColor }}>
+                {score > 0 ? '+' : ''}{score.toFixed(2)}
+            </span>
 
             {/* Tooltip */}
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block bg-gray-900 text-white text-xs rounded py-1 px-2 w-32 z-10 shadow-lg">
-                <p>{label}</p>
-                <p>Articles: {articleCount || 0}</p>
-                {subjectivity !== undefined && <p>Subj: {subjectivity.toFixed(2)}</p>}
+            <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-20 w-36 rounded-lg p-2 text-xs shadow-xl"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{label}</p>
+                <p>Score: {score.toFixed(3)}</p>
+                {articleCount !== undefined && <p>Articles: {articleCount}</p>}
+                {subjectivity !== undefined && <p>Subjectivity: {subjectivity.toFixed(2)}</p>}
             </div>
         </div>
     );

@@ -7,83 +7,82 @@ interface TickerSearchProps {
     className?: string;
 }
 
-const TickerSearch: React.FC<TickerSearchProps> = ({ onSelect, placeholder = "Search ticker...", className }) => {
+const TickerSearch: React.FC<TickerSearchProps> = ({ onSelect, placeholder = 'Search ticker…', className }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
-    const [showResults, setShowResults] = useState(false);
-    const searchRef = useRef<HTMLDivElement>(null);
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-                setShowResults(false);
-            }
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
         };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
     }, []);
 
     useEffect(() => {
-        const delayDebounceFn = setTimeout(async () => {
-            if (query.length > 1) {
-                setLoading(true);
-                try {
-                    const data = await searchTickers(query);
-                    setResults(data);
-                    setShowResults(true);
-                } catch (error) {
-                    console.error("Search failed", error);
-                    setResults([]);
-                } finally {
-                    setLoading(false);
-                }
-            } else {
-                setResults([]);
-                setShowResults(false);
-            }
-        }, 500);
-
-        return () => clearTimeout(delayDebounceFn);
+        if (query.length < 2) { setResults([]); setOpen(false); return; }
+        const t = setTimeout(async () => {
+            setLoading(true);
+            try {
+                const data = await searchTickers(query);
+                setResults(data);
+                setOpen(data.length > 0);
+            } catch { setResults([]); }
+            finally { setLoading(false); }
+        }, 400);
+        return () => clearTimeout(t);
     }, [query]);
 
-    const handleSelect = (ticker: string) => {
-        setQuery(ticker);
-        setShowResults(false);
-        onSelect(ticker);
+    const handleSelect = (symbol: string) => {
+        setQuery(symbol);
+        setOpen(false);
+        onSelect(symbol);
     };
 
     return (
-        <div className={`relative ${className}`} ref={searchRef}>
-            <input
-                type="text"
-                className="block w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder={placeholder}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-            />
-            {loading && (
-                <div className="absolute right-3 top-2.5">
-                    <div className="animate-spin h-4 w-4 border-2 border-indigo-500 border-t-transparent rounded-full"></div>
-                </div>
-            )}
+        <div className={`relative ${className ?? ''}`} ref={ref}>
+            <div className="relative">
+                <input
+                    type="text"
+                    placeholder={placeholder}
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onFocus={() => results.length > 0 && setOpen(true)}
+                    className="w-full px-3 py-2 text-sm pr-8"
+                />
+                {loading && (
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                        <span className="w-3.5 h-3.5 border-2 rounded-full animate-spin block"
+                            style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
+                    </div>
+                )}
+            </div>
 
-            {showResults && results.length > 0 && (
-                <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-                    {results.map((result, index) => (
+            {open && results.length > 0 && (
+                <ul className="absolute z-30 mt-1 w-full rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                    {results.slice(0, 8).map((r, i) => (
                         <li
-                            key={index}
-                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white group"
-                            onClick={() => handleSelect(result.symbol)}
+                            key={i}
+                            onClick={() => handleSelect(r.symbol)}
+                            className="flex items-center justify-between px-3 py-2 cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
                         >
-                            <div className="flex justify-between">
-                                <span className="font-medium truncate">{result.symbol}</span>
-                                <span className="text-slate-500 group-hover:text-indigo-200 text-xs truncate ml-2">{result.shortname || result.longname}</span>
+                            <div>
+                                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                    {r.symbol}
+                                </span>
+                                <span className="text-xs ml-2 truncate max-w-[140px] inline-block align-middle"
+                                    style={{ color: 'var(--text-muted)' }}>
+                                    {r.shortname || r.longname}
+                                </span>
                             </div>
-                            <span className="text-xs text-slate-400 group-hover:text-indigo-300 block">{result.exchange} - {result.type}</span>
+                            <span className="text-xs flex-shrink-0 ml-2"
+                                style={{ color: 'var(--text-muted)' }}>
+                                {r.exchange}
+                            </span>
                         </li>
                     ))}
                 </ul>
