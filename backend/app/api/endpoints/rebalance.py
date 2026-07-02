@@ -1,3 +1,4 @@
+import logging
 from typing import Any, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -8,7 +9,8 @@ from app.services.optimization import OptimizationEngine
 from app.services.market_data import MarketDataService
 
 from pydantic import BaseModel
- 
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class OptimizationConfig(BaseModel):
@@ -42,8 +44,8 @@ def optimize_portfolio(
     md_service = MarketDataService(db)
     try:
         md_service.fetch_and_store_prices(tickers)
-    except Exception as e:
-        print(f"Warning: Failed to update prices during optimization: {e}")
+    except Exception as exc:
+        logger.warning("Failed to update prices during optimization: %s", exc)
 
     prices = md_service.get_latest_prices(tickers)
     

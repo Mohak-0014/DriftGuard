@@ -1,10 +1,9 @@
-"""
-Currency conversion service for multi-currency portfolio support.
-Uses exchangerate-api.com for free exchange rates.
-"""
+import logging
 import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 # Supported currencies
 CURRENCIES = ["USD", "EUR", "INR"]
@@ -62,12 +61,11 @@ class CurrencyService:
                     }
                     _cache_expiry = datetime.now() + self.CACHE_DURATION
                     return _cached_rates
-        except Exception as e:
-            print(f"Failed to fetch exchange rates: {e}")
-        
-        # Return fallback rates on failure
+        except Exception as exc:
+            logger.warning("Failed to fetch exchange rates: %s", exc)
+
         return FALLBACK_RATES
-    
+
     def get_exchange_rates_sync(self) -> Dict[str, float]:
         """
         Synchronous version - uses cached rates or fallback.
@@ -90,8 +88,8 @@ class CurrencyService:
                 }
                 _cache_expiry = datetime.now() + self.CACHE_DURATION
                 return _cached_rates
-        except Exception as e:
-            print(f"Failed to fetch exchange rates (sync): {e}")
+        except Exception as exc:
+            logger.warning("Failed to fetch exchange rates (sync): %s", exc)
         
         return FALLBACK_RATES
     

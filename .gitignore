@@ -16,6 +16,7 @@ venv/
 env/
 .env
 .env.*
+!.env.example
 *.sqlite3
 *.db
 rebalance.db
@@ -38,9 +39,8 @@ db_debug.txt
 *.log
 api_response.json
 
-# Test & Utility Scripts
+# Test & Utility Scripts (root-level scratch scripts only)
 verify_*.py
-test_*.py
 check_*.py
 clean_db.py
 create_tables.py
