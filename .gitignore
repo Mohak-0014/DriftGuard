@@ -38,6 +38,9 @@ opt_output.txt
 db_debug.txt
 *.log
 api_response.json
+test_output*.txt
+test_api_output*.txt
+advanced_test_output.txt
 
 # Test & Utility Scripts (root-level scratch scripts only)
 verify_*.py

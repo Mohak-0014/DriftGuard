@@ -16,12 +16,12 @@ router = APIRouter()
 
 class OptimizationConfig(BaseModel):
     min_weight: float = 0.05
-    max_weight: float = 0.60
-    turnover_penalty: float = 0.0
+    max_weight: float = 0.40
+    turnover_penalty: float = 1.0
     large_deviation_threshold: float = 0.10
-    large_deviation_penalty: float = 0.0
+    large_deviation_penalty: float = 0.5
     risk_aversion: float = 5.0
-    div_penalty: float = 0.0
+    div_penalty: float = 0.1
 
 @router.post("/{portfolio_id}/optimize")
 @limiter.limit("10/minute")
