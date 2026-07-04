@@ -74,7 +74,7 @@ const Onboarding: React.FC = () => {
                 </div>
 
                 {/* Holdings */}
-                <div className="card overflow-hidden">
+                <div className="card">
                     <div className="px-5 py-4 border-b flex items-center justify-between"
                         style={{ borderColor: 'var(--border)' }}>
                         <span className="text-xs font-semibold uppercase tracking-wider"
